@@ -23,11 +23,18 @@ _TASK_ROW = re.compile(r"^\|\s*(T-\d+)\s*\|", re.MULTILINE)
 def markdown_files() -> list[Path]:
     """検査対象のドキュメント。
 
-    変換結果を固定したゴールデンファイルはドキュメントではない。
-    中の相対パスは Markdown の出力例なので検査しない。
+    変換結果（ゴールデン・converted）はドキュメントではない。
+    中の相対パスは変換された資料の中身なので検査しない。
+    実資料に他ファイルへのリンクが含まれていると、ここで誤検出になる。
     一方 `tests/corpus/` の README や症状レポートは人間が書くので検査対象。
     """
-    generated = (TESTS / "assets", TESTS / "corpus" / "passing" / "expected")
+    corpus = TESTS / "corpus"
+    generated = (
+        TESTS / "assets",
+        corpus / "passing" / "expected",
+        corpus / "passing" / "converted",
+        corpus / "failing" / "expected",
+    )
     return sorted(
         p
         for p in ROOT.rglob("*.md")

@@ -82,6 +82,7 @@ Markdown への写像規則の詳細は [05-変換ルール](05-conversion-rules
 | NFR-08 | ✅ | 実資料を通ったもの／通らなかったものに分けて残し、退行と再挑戦の両方に使う | `test_passing_document_output_is_frozen` |
 | NFR-09 | ✅ | 通らなかった資料でも説明できない例外で落ちず、症状の説明が添えられている | `test_failing_document_fails_gracefully` |
 | NFR-10 | ✅ | 通らなかった資料の**壊れ方**も固定し、静かな悪化を検出する | `test_failing_document_output_is_frozen` |
+| NFR-11 | ✅ | 通った資料の**変換後 Markdown そのもの**を保存し、実物を確認できる | `test_passing_document_converted_file_is_stored` |
 | NFR-02 | ✅ | コア機能は Python 標準ライブラリのみで動く（PDF のみ追加依存） | `pyproject.toml` の `dependencies` が空 |
 | NFR-03 | ✅ | 既定の動作でネットワーク通信を行わない | 外部通信コードを持たない |
 | NFR-04 | ✅ | 壊れたファイルでもスタックトレースを出さず、原因の分かる日本語メッセージを返す | `test_broken_file_returns_error_code` |

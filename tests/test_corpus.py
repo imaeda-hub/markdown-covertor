@@ -27,6 +27,7 @@ CORPUS = Path(__file__).resolve().parent / "corpus"
 PASSING = CORPUS / "passing"
 FAILING = CORPUS / "failing"
 INBOX = CORPUS / "inbox"
+CONVERTED = PASSING / "converted"
 
 # 説明用のテキストと、生成物の置き場所。それ以外はすべて検体として扱う
 _NOT_SAMPLES = {".md", ".txt", ".gitkeep"}
@@ -45,6 +46,39 @@ def documents(folder: Path) -> list[Path]:
         for p in folder.iterdir()
         if p.is_file() and not p.name.startswith(".") and p.suffix.lower() not in _NOT_SAMPLES
     )
+
+
+def test_generated_files_have_their_document():
+    """生成物が取り残されていないこと。
+
+    昇格（failing → passing）のときに古いゴールデンを消し忘れると、
+    「まだ壊れている」という嘘の期待値が残ったままテストは緑になる。
+    掃除漏れを機械的に検出する。
+    """
+    passing = {p.name for p in documents(PASSING)}
+    failing = {p.name for p in documents(FAILING)}
+    orphans: list[str] = []
+
+    for folder, owners in (
+        (CONVERTED, passing),
+        (expected_dir(PASSING), passing),
+        (expected_dir(FAILING), failing),
+    ):
+        for generated in folder.glob("*.md"):
+            source = generated.name.removesuffix(".summary.md").removesuffix(".md")
+            if source not in owners:
+                orphans.append(str(generated.relative_to(CORPUS)))
+
+    assets = CONVERTED / "assets"
+    if assets.is_dir():
+        stems = {Path(name).stem for name in passing}
+        orphans += [
+            str(d.relative_to(CORPUS))
+            for d in assets.iterdir()
+            if d.is_dir() and d.name not in stems
+        ]
+
+    assert not orphans, f"元の検体が無い生成物: {sorted(orphans)}"
 
 
 def expected_dir(folder: Path) -> Path:
@@ -117,6 +151,31 @@ def summarize(path: Path) -> str:
 def test_passing_document_output_is_frozen(path: Path):
     """通った資料の変換結果が変わっていないこと。"""
     assert_output_is_frozen(path, PASSING)
+
+
+@pytest.mark.parametrize("path", documents(PASSING), ids=ids(documents(PASSING)))
+def test_passing_document_converted_file_is_stored(path: Path):
+    """**変換後の Markdown そのもの**をリポジトリに置き、内容を固定する。
+
+    要約だけでは「実際にどんな Markdown になるのか」を人間が確認できない。
+    `converted/` には CLI で変換したのと同じ成果物（画像を含む）が入る。
+    """
+    needs_pypdf(path)
+    result = convert_file(path)
+    # 拡張子を残すのは、同名で形式違いの検体（test.docx と test.xlsx）が衝突するため。
+    # なお画像の置き場所は拡張子を含まないので、まだ衝突しうる（T-23）
+    converted = CONVERTED / f"{path.name}.md"
+
+    if os.environ.get("UPDATE_GOLDEN"):
+        result.write(converted)
+
+    assert converted.exists(), f"{converted.name} がない。UPDATE_GOLDEN=1 で生成できる"
+    assert result.markdown == converted.read_text(encoding="utf-8")
+
+    for asset in result.document.assets:
+        stored = converted.parent / asset.path
+        assert stored.exists(), f"{asset.path} が置かれていない"
+        assert stored.read_bytes() == asset.data, f"{asset.path} の中身が変わっている"
 
 
 def assert_output_is_frozen(path: Path, folder: Path) -> None:

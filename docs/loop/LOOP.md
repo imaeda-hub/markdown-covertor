@@ -56,13 +56,23 @@ AI 分野は進化が速く、**手元の知識は古い前提**で動く。以�
 
 1. **`tests/corpus/inbox/` を見る。** ファイルがあれば 1 つずつ変換して判定する
    （判定基準は [`tests/corpus/README.md`](../../tests/corpus/README.md)。**疑わしきは失敗**）
-2. 通ったもの → `passing/` に移動し、`UPDATE_GOLDEN=1` で要約を固定する
+2. 通ったもの → `passing/` に移動し、`UPDATE_GOLDEN=1` で
+   **変換後の Markdown（`passing/converted/`）と要約（`passing/expected/`）を両方**固定する
 3. 通らなかったもの → `failing/` に移動し、`failing/<ファイル名>.md` に
    **症状 / 原因 / 期待する出力 / タスク** を書く。必要ならタスクを起票する。
    要約は `failing/expected/` にも固定する（**壊れ方が静かに悪化するのを防ぐ**）
-4. **`failing/` の資料を毎回すべて再変換する。** 直っていたら `passing/` へ昇格させる。
-   昇格でやること: 資料の移動／症状レポートの削除／
-   `failing/expected/` の要約を消して `passing/expected/` に作り直す／journal に何が直ったかを書く
+4. **`failing/` の資料は成功するまで毎回テスト対象にする。**
+   1 回失敗して終わりにせず、ループが回るたびに全件を再変換する。
+   直っていたら `passing/` へ昇格させる。昇格でやること:
+
+   | やること | 対象 |
+   |---|---|
+   | 資料を移動する | `failing/<名前>` → `passing/<名前>` |
+   | 症状レポートを消す | `failing/<名前>.md` |
+   | 壊れ方の要約を消す | `failing/expected/<名前>.summary.md` |
+   | 変換結果を置く | `passing/converted/<名前>.md`（`UPDATE_GOLDEN=1`） |
+   | 要約を作り直す | `passing/expected/<名前>.summary.md`（同上） |
+   | journal に書く | 何が直ったか、どの修正が効いたか |
 5. inbox は空にして終わる（振り分け先が決まらない資料は failing に置く）
 
 > 検体が増えるほどループは重くなる。1 回のループで新規に受け入れるのは 5 件程度まで。

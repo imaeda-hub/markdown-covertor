@@ -36,7 +36,7 @@
 | `tests/fixtures.py` | テスト用の最小 Office ファイル生成 | 中 |
 | `tests/test_docs_consistency.py` | 仕様書の健全性チェック（リンク・ID・テスト参照） | 低 |
 | `tests/assets/` | 生成した Office ファイルと、固定した出力 | 低 |
-| `tests/corpus/` | 実資料の検体（`inbox` / `passing` / `failing`） | **高**（毎回増える） |
+| `tests/corpus/` | 実資料の検体（`inbox` / `passing` / `failing`）と変換結果 | **高**（毎回増える） |
 | `tools/build_fixtures.py` | `tests/assets/` の入力ファイルを作り直す開発用スクリプト | 低 |
 
 ファイル構成を変えたら、**この表も一緒に直す**（ループ手順書 ⑦.5）。
