@@ -2,17 +2,22 @@
 
 Word / Excel / PowerPoint / PDF の資料を、読みやすい **Markdown** に変換するツール。
 
-- 🚀 **すぐ動く** — Office 形式はモデルのダウンロードも外部依存もなし
-- 🔒 **手元で完結** — 既定でネットワーク通信を一切しない（社内資料を扱う前提）
-- 🧾 **落ちた情報を隠さない** — 変換で失われた画像・非表示シートなどは警告で伝える
-- 🧩 **構造を保つ** — 見出し・表・箇条書き・リンクを保ったまま変換
+変換の本体は Microsoft の [markitdown](https://github.com/microsoft/markitdown)。
+**このツールは markitdown だけでは足りない部分を補う。**
+
+- 🧾 **落ちた情報を隠さない** — グラフ・画像・テキストボックスなど、消えたものを警告で伝える
+- 🔒 **非表示シートを漏らさない** — Excel の隠しシートは中身ごと除外（既定）
+- 🖼 **画像を実ファイルにする** — markitdown は中身を出さないので、元ファイルから取り出す
+- 🧹 **表の崩れを直す** — 空ヘッダの繰り上げ、`NaN` の除去
+- 🔒 **手元で完結** — 既定でネットワーク通信をしない（社内資料を扱う前提）
 
 ## インストール
 
 ```bash
-pip install -e .          # Word / Excel / PowerPoint
-pip install -e ".[pdf]"   # PDF も使う場合
+pip install -e .
 ```
+
+markitdown とその依存（約 320MB）が入ります。初回のみ時間がかかります。
 
 ## 使い方
 
@@ -55,10 +60,10 @@ for notice in result.notices:
 
 | 形式 | 状態 | 得意 | 苦手 |
 |---|---|---|---|
-| Word (.docx) | ✅ | 見出し・表・リスト・リンク | 数式・脚注・図形 |
-| Excel (.xlsx) | ✅ | シート・数式の値・空セル位置 | 結合セル・グラフ |
-| PowerPoint (.pptx) | ✅ | タイトル・箇条書き・発表者ノート | 画像・図形の位置関係 |
-| PDF | ✅ | 段落の復元・箇条書き | 表・段組み・スキャン画像 |
+| Word (.docx) | ✅ | 見出し・表・リンク・画像 | 箇条書きの入れ子・引用・脚注 |
+| Excel (.xlsx) | ✅ | シート・数式の値・非表示シートの除外 | 結合セル・数値書式 |
+| PowerPoint (.pptx) | ✅ | タイトル・本文・表・発表者ノート | 画像の実体・箇条書き記号 |
+| PDF | ✅ | **罫線のない表**・段落・折り返し | 見出しの認識・スキャン画像 |
 
 旧バイナリ形式（.doc / .xls / .ppt）は未対応。Office で新形式に保存し直してください。
 
@@ -73,7 +78,7 @@ for notice in result.notices:
 詳細は **[ドキュメントの地図](docs/README.md)** から。
 
 ```bash
-python -m venv .venv && .venv/bin/pip install -e ".[dev,pdf]"
+python -m venv .venv && .venv/bin/pip install -e ".[dev]"
 .venv/bin/pytest        # テスト
 .venv/bin/ruff check .  # lint
 ```

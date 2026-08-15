@@ -35,7 +35,8 @@
 
 ### コード（`src/`）
 - コメント・docstring は日本語。「何を」ではなく**「なぜ」**を書く
-- コア機能は標準ライブラリのみ。依存追加は仕様（03-design.md）に理由を書いてから
+- 変換の本体は markitdown。**自前で変換ロジックを書かない**（補完に専念する）
+- markitdown を呼ぶのは `engine.py` だけ。エンジン差し替えを 1 箇所で済ませるため
 - 例外は `errors.py` の型を使う。利用者にスタックトレースを見せない
 - 型注釈を付ける。`from __future__ import annotations` を使う
 
@@ -53,7 +54,7 @@
 .venv/bin/ruff format .   # 整形
 ```
 
-venv がなければ `uv venv .venv && uv pip install --python .venv/bin/python -e ".[dev,pdf]"`。
+venv がなければ `uv venv .venv && uv pip install --python .venv/bin/python -e ".[dev]"`。
 
 ## コミット
 

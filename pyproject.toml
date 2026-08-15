@@ -1,19 +1,22 @@
 [project]
 name = "mdconv"
-version = "0.1.0"
+version = "0.2.0"
 description = "Word / Excel / PowerPoint / PDF の資料を Markdown に変換するツール"
 readme = "README.md"
 requires-python = ">=3.10"
 license = { text = "MIT" }
-dependencies = []
+# 変換の本体は markitdown。対応形式はここで足す
+dependencies = ["markitdown[docx,xlsx,pptx,pdf]>=0.1.7"]
 
 [project.optional-dependencies]
-# PDF 変換に必要（コア機能はオフラインかつ依存ゼロで動く）
-pdf = ["pypdf>=5.1.0"]
-dev = ["pytest>=8.0", "ruff>=0.6"]
-# tools/build_fixtures.py で回帰テスト用の実ファイルを作り直すときだけ必要。
-# 本体はこれらに依存しない（生成済みファイルは tests/assets/ にコミット済み）
-fixtures = ["python-docx>=1.2", "openpyxl>=3.1", "python-pptx>=1.0"]
+# テストは Office ファイルを組み立てるので、生成ライブラリが要る
+dev = [
+    "pytest>=8.0",
+    "ruff>=0.6",
+    "python-docx>=1.2",
+    "openpyxl>=3.1",
+    "python-pptx>=1.0",
+]
 
 [project.scripts]
 mdconv = "mdconv.cli:main"

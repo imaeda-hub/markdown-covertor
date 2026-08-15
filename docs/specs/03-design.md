@@ -2,149 +2,122 @@
 
 ## 1. 全体像
 
+**v0.2 から、変換の本体は [markitdown](https://github.com/microsoft/markitdown)（Microsoft, MIT）。**
+このツールの役割は「markitdown だけでは足りない部分を補う」ことに変わった。
+
 ```
-入力ファイル                                             出力
-    │                                                    │
-    ▼                                                    ▼
-┌─────────┐   ┌──────────────┐   ┌────────┐   ┌──────────┐
-│ registry │──▶│  コンバータ   │──▶│   IR   │──▶│ レンダラ  │
-│ 形式判定  │   │ 形式ごとに 1 つ│   │中間表現 │   │ Markdown │
-└─────────┘   └──────────────┘   └────────┘   └──────────┘
-                      │                │
-                 docx/xlsx/        Heading, Table,
-                 pptx/pdf          ListBlock, ...
+入力ファイル
+    │
+    ▼
+┌──────────┐   ┌─────────────┐   ┌──────────────┐   ┌───────────────┐
+│ registry  │──▶│  markitdown  │──▶│  inspection   │──▶│  postprocess   │──▶ Markdown
+│ 形式判定   │   │   変換本体    │   │ 何が落ちたか   │   │  出力を整える    │    ＋警告＋画像
+└──────────┘   └─────────────┘   └──────────────┘   └───────────────┘
+                   engine.py         inspection.py       postprocess.py
+                                     media.py
 ```
 
-**要点は「IR を真ん中に挟む」こと。** これにより
+| 工程 | 誰がやるか | 何をするか |
+|---|---|---|
+| 形式判定 | 自前 | 拡張子と中身から形式を決め、未対応なら日本語で断る |
+| **変換** | **markitdown** | Word/Excel/PowerPoint/PDF → Markdown |
+| 検査 | 自前 | 元ファイルを開き、**出力に現れない要素**を数えて警告にする |
+| 補正 | 自前 | 画像の実体化、非表示シートの除去、表の崩れ直し、体裁 |
 
-- 出力書式を変えるとき、直すのはレンダラ 1 箇所だけ
-- 新しい入力形式は、IR を作る関数を 1 つ書けば足りる
-- テストが「文字列の一致」ではなく「構造の一致」で書ける
-- 将来 GUI / HTML 出力 / JSON 出力を足しても、コンバータは無改造
+## 2. なぜ markitdown なのか
 
-## 2. ファイル構成
+2026-08-15 に自前実装から乗り換えた。判断の材料は実測。
+
+| 観点 | 自前実装 (v0.1) | markitdown (v0.2) |
+|---|---|---|
+| **PDF の表** | 1 段落に潰れる | **表として復元できる**（pdfplumber） |
+| PDF の段落 | 数ページが 1 段落に潰れる | 段落が保たれる |
+| Word の箇条書きの入れ子 | 保たれる | **潰れる**（劣化） |
+| Word の引用 | `>` になる | 平文になる（劣化） |
+| 依存 | 0 パッケージ | 44 パッケージ / 約 320MB |
+| 保守 | 全部自分で直す | 上流の改善が自動で入る |
+
+**決め手は PDF。** 実資料で最も壊れていたのが PDF の表で、
+自前で座標解析を実装するより、それを本業にしているライブラリに任せる方が速く確実。
+劣化した項目（箇条書きの入れ子など）は補正で取り返すか、
+できなければ「未対応」として仕様に明記する。
+
+**見直す条件**: markitdown の保守が止まったとき、
+または補正コードが markitdown 本体より複雑になったとき。
+
+## 3. ファイル構成
 
 | パス | 役割 | 触る頻度 |
 |---|---|---|
-| `src/mdconv/model.py` | IR の定義（Heading, Table, Span …） | 低（追加のみ） |
-| `src/mdconv/renderer.py` | IR → Markdown | 中 |
-| `src/mdconv/registry.py` | 拡張子・中身から形式を判定 | 低 |
-| `src/mdconv/api.py` | 公開 API（`convert_file`） | 低 |
+| `src/mdconv/engine.py` | **markitdown を呼ぶ唯一の場所**。差し替えるならここだけ | 低 |
+| `src/mdconv/inspection.py` | 元ファイルを調べ、落ちた情報を警告にする | 中 |
+| `src/mdconv/media.py` | 元ファイルから画像の実体を取り出す | 低 |
+| `src/mdconv/postprocess.py` | 出力の補正（画像・非表示シート・表・体裁） | **高** |
+| `src/mdconv/api.py` | 公開 API。上の 4 つを組み立てる | 低 |
+| `src/mdconv/registry.py` | 形式判定 | 低 |
+| `src/mdconv/types.py` | Notice / Asset / Inspection | 低 |
+| `src/mdconv/ooxml.py` | ZIP + XML の読み取り（検査用） | 低 |
 | `src/mdconv/cli.py` | コマンドライン | 中 |
-| `src/mdconv/ooxml.py` | Office 形式共通の ZIP/XML 読み取り | 低 |
-| `src/mdconv/converters/*.py` | 形式ごとの解析 | **高** |
-| `tests/fixtures.py` | テスト用の最小 Office ファイル生成 | 中 |
-| `tests/test_docs_consistency.py` | 仕様書の健全性チェック（リンク・ID・テスト参照） | 低 |
-| `tests/assets/` | 生成した Office ファイルと、固定した出力 | 低 |
-| `tests/corpus/` | 実資料の検体（`inbox` / `passing` / `failing`）と変換結果 | **高**（毎回増える） |
-| `tools/build_fixtures.py` | `tests/assets/` の入力ファイルを作り直す開発用スクリプト | 低 |
+| `tests/fixtures.py` | テスト用 Office ファイルの生成 | 中 |
+| `tests/corpus/` | 実資料の検体（`inbox` / `passing` / `failing`） | **高** |
 
 ファイル構成を変えたら、**この表も一緒に直す**（ループ手順書 ⑦.5）。
 
-## 3. 設計判断とその理由
+## 4. 補完している 4 つのこと
 
-判断を後から覆せるように、**「なぜそうしたか」と「見直す条件」**を書いておく。
+markitdown をそのまま使うと困る点と、その対処。
 
-### 3.1 Office 形式を外部ライブラリなしで読む
+### 4.1 落ちた情報が分からない → 元ファイルを調べて警告する
 
-`.docx` / `.xlsx` / `.pptx` は「ZIP の中に XML」なので、`zipfile` + `ElementTree` だけで読める。
+markitdown はグラフも SmartArt も黙って捨てる。出力を見ても気づけない。
+`inspection.py` が ZIP を開いて該当パートを数え、`Notice` として返す。
 
-| 観点 | 判断 |
-|---|---|
-| 利点 | インストールが速い。依存の脆弱性・破壊的変更に振り回されない。挙動を完全に制御できる |
-| 欠点 | 仕様の細部（結合セル、数式、図形）を自前で実装する必要がある |
-| 見直す条件 | 自前実装の複雑さが `python-docx` 等の学習コストを上回ったとき |
+### 4.2 画像の中身が出てこない → 元ファイルから取り出す
 
-### 3.2 PDF だけは追加依存（pypdf）
+markitdown は画像を `![alt](data:image/png;base64...)` という**印だけ**で出す。
+中身が入っていないので、そのままでは画像が失われる。
+`media.py` が元ファイルから実体を取り出し、`postprocess.py` が
+**出現順**にプレースホルダと対応づけて置き換える。
 
-PDF は ZIP+XML ではなく独自のバイナリ構造で、自前実装は現実的でない。
-ただし **PDF を使わない利用者に依存を強制しない**ため、追加インストール（`pip install 'mdconv[pdf]'`）にしている。
+現在 Word のみ。PowerPoint / Excel は markitdown が図形名で参照するため
+対応づけられず、枚数の警告に留めている（T-24）。
 
-### 3.3 PDF の構造復元は「推測」だと明示する
+### 4.3 非表示シートの中身が出る → 節ごと落とす
 
-PDF には見出し情報が無く、あるのは文字と座標だけ。
-現在は「短くて句点で終わらない行は見出し」といったヒューリスティックで復元しており、
-**外れることがある**。この限界は [変換ルール](05-conversion-rules.md#pdf) に明記する。
+Excel の非表示シートには社内原価などが入っていることがある。
+markitdown は区別なく出力するため、**そのままでは情報漏洩になる**。
+`postprocess.drop_sections()` が該当する `## シート名` の節を丸ごと落とす。
 
-将来 Docling / Marker（レイアウト解析モデル）をプラグインとして差せるよう、
-`registry.py` の対応表にエンジンを足せば切り替わる構造にしてある。
+### 4.4 表が崩れる → 直す
 
-### 3.4 「失われた情報」を戻り値に載せる
+* Word の表が「空ヘッダ + 全行データ」になる → 1 行目を見出しに繰り上げる
+* Excel の空セルが `NaN` になる（pandas 由来）→ 空に戻す
+* 空シートが `|` だけの壊れた表になる → 落とす
 
-変換は必ず情報を失う（画像、色、レイアウト）。
-黙って落とすと利用者は気づけないので、`Document.notices` に記録して呼び出し側へ返す。
-CLI は標準エラーに出し、`--include-notices` で Markdown 末尾にも残せる。
-
-### 3.5 オプションは 1 つの `ConvertOptions` に集約
-
-形式ごとにオプションの型を分けると、GUI から使うときに分岐が増える。
-`ConvertOptions` に全部持たせ、各コンバータが受け取れるものだけを
-シグネチャから拾って渡す（`api._kwargs_for`）。
-
-## 4. データ構造（IR）
-
-```
-Document
-├─ title, source_format, source_name
-├─ blocks: [Block]
-│   ├─ Heading(level, spans)
-│   ├─ Paragraph(spans)
-│   ├─ ListBlock(items: [ListItem(spans, level, ordered)])
-│   ├─ Table(header, rows)      # 各セルは [Span]
-│   ├─ CodeBlock(text, language)
-│   ├─ Image(path, alt)
-│   ├─ Callout(label, blocks)   # 引用・発表者ノート
-│   └─ Divider()
-├─ assets: [Asset(path, data)]  # 抽出した画像（path は本文の参照と同じ相対パス）
-└─ notices: [Notice(message, severity)]
-```
-
-`Span` は「文字列 + 装飾（太字/斜体/コード/打消し/リンク先）」。
-インライン装飾をこの 1 型に集約することで、レンダラ側の分岐を抑えている。
-
-## 5. 拡張のしかた
-
-### 新しい入力形式を足す
-
-1. `src/mdconv/converters/<形式>.py` に `convert(path, **options) -> Document` を書く
-2. `registry.py` の `FORMATS` に 1 行足す
-3. `tests/fixtures.py` に最小ファイルの生成関数を足し、テストを書く
-
-### 新しい出力形式を足す（将来）
-
-`renderer.py` と同じ形（`render(doc, options) -> str`）のモジュールを足す。
-コンバータ側は一切変更不要。
-
-## 6. エラーの方針
+## 5. エラーの方針
 
 | 例外 | いつ | CLI の挙動 |
 |---|---|---|
 | `UnsupportedFormatError` | 未対応の形式 | 終了コード 2、対応形式を提示 |
-| `BrokenDocumentError` | ファイルが壊れている | 終了コード 1、そのファイルだけ飛ばす |
-| `MissingDependencyError` | 追加依存が未インストール | インストールコマンドを提示 |
+| `BrokenDocumentError` | 変換に失敗（壊れている・暗号化など） | 終了コード 1、そのファイルだけ飛ばす |
+| `MissingDependencyError` | markitdown が入っていない | インストールコマンドを提示 |
 
-**スタックトレースを利用者に見せない**こと。原因と次の行動が分かる日本語にする。
+markitdown は多様な例外を投げるので、`engine.py` がすべて受け止めて
+**原因の分かる日本語**に翻訳する。利用者にスタックトレースを見せない（NFR-04）。
 
-## 7. テスト方針
+## 6. テスト方針
 
-テストは**二層**になっている。片方だけでは守れないものがある。
+テストは**三層**。片方だけでは守れないものがある。
 
 | 層 | 何を確かめるか | 置き場所 |
 |---|---|---|
-| 手書き XML | 「この XML をこう読む」という仕様。テストを読めば挙動が分かる | `tests/fixtures.py` + 各 `test_*.py` |
-| 生成した実ファイル | 本物の Office 形式で壊れないこと。**想定外を検出する** | `tests/assets/` + `test_real_files.py` |
+| 補正の単体 | 文字列 → 文字列の変換が正しいか | `test_postprocess.py` |
+| 生成した実ファイル | 検査と画像取り出しが動くか | `tests/fixtures.py` + `test_conversion.py` |
 | 実資料の検体 | 現場の資料で通るか。**通らなかった実例を残す** | `tests/corpus/` + `test_corpus.py` |
-
-手書き XML は自分の想定しか書けないので、想定外は見つけられない。
-実際、実ファイル層を入れた初日に「スタイル側に番号定義がある箇条書き」の
-取りこぼし（FR-216）が見つかった。逆に実ファイルだけでは、
-どの XML 構造が原因で壊れたのかが分からない。**両方いる。**
-
-検体（`tests/corpus/`）は 3 つ目の層で、**直っていないものを消さずに置いておく**ための場所。
-`failing/` の資料は毎回のループで再変換され、直れば `passing/` に昇格する。
-運用は [`tests/corpus/README.md`](../../tests/corpus/README.md) を参照。
 
 - **完全一致で比較する**: 出力の安定性（NFR-01）を守るため、部分一致は避ける。
 - **1 テスト 1 事実**: 落ちたテスト名だけで壊れた仕様が分かるようにする。
-- 実ファイルの期待値は `UPDATE_GOLDEN=1 pytest` で更新できるが、
+- 検体の期待値は `UPDATE_GOLDEN=1 pytest` で更新できるが、
   **差分を必ず目で確認する**（更新は「仕様が変わった」という宣言になる）。
+- 検体の要約は**内部表現ではなく出力 Markdown を読み直して**作る。
+  エンジンを差し替えても同じ物差しで比べられるようにするため。

@@ -6,51 +6,24 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 
-from .errors import UnsupportedFormatError
-from .model import Document
+from .errors import BrokenDocumentError, UnsupportedFormatError
 
 
 @dataclass(frozen=True, slots=True)
 class Format:
     name: str
     extensions: tuple[str, ...]
-    loader: Callable[[], Callable[..., Document]]
     description: str
 
 
-def _docx_loader() -> Callable[..., Document]:
-    from .converters import docx
-
-    return docx.convert
-
-
-def _xlsx_loader() -> Callable[..., Document]:
-    from .converters import xlsx
-
-    return xlsx.convert
-
-
-def _pptx_loader() -> Callable[..., Document]:
-    from .converters import pptx
-
-    return pptx.convert
-
-
-def _pdf_loader() -> Callable[..., Document]:
-    from .converters import pdf
-
-    return pdf.convert
-
-
 FORMATS: tuple[Format, ...] = (
-    Format("docx", (".docx", ".docm"), _docx_loader, "Word 文書"),
-    Format("xlsx", (".xlsx", ".xlsm"), _xlsx_loader, "Excel ブック"),
-    Format("pptx", (".pptx", ".pptm"), _pptx_loader, "PowerPoint プレゼンテーション"),
-    Format("pdf", (".pdf",), _pdf_loader, "PDF 文書"),
+    Format("docx", (".docx", ".docm"), "Word 文書"),
+    Format("xlsx", (".xlsx", ".xlsm"), "Excel ブック"),
+    Format("pptx", (".pptx", ".pptm"), "PowerPoint プレゼンテーション"),
+    Format("pdf", (".pdf",), "PDF 文書"),
 )
 
 _BY_EXT = {ext: fmt for fmt in FORMATS for ext in fmt.extensions}
@@ -72,17 +45,25 @@ def detect(path: str | Path, *, explicit: str | None = None) -> Format:
             )
         return fmt
 
+    # 中身を先に見る。拡張子が実態と食い違っていても正しく扱うため（FR-105）
+    sniffed = sniff(path)
+    if sniffed is not None:
+        return sniffed
+
     suffix = Path(path).suffix.lower()
     if suffix in _BY_EXT:
-        return _BY_EXT[suffix]
+        if not Path(path).is_file():
+            return _BY_EXT[suffix]  # 中身を見られないときは拡張子を信じる
+        # 拡張子は対応形式なのに中身が違う。markitdown は平文として
+        # 読んでしまい「変換できた」ように見えるので、ここで止める
+        raise BrokenDocumentError(
+            f"拡張子は {suffix} ですが、中身がその形式ではありません: {Path(path).name}"
+        )
     if suffix in _LEGACY:
         raise UnsupportedFormatError(
             f"{_LEGACY[suffix]} 形式（{suffix}）は未対応です。"
             "Office で新しい形式に保存し直してください。"
         )
-    sniffed = sniff(path)
-    if sniffed is not None:
-        return sniffed
     raise UnsupportedFormatError(
         f"拡張子 '{suffix or '(なし)'}' には対応していません"
         f"（対応: {', '.join(SUPPORTED_EXTENSIONS)}）"

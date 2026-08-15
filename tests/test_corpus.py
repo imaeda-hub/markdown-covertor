@@ -15,13 +15,12 @@ from __future__ import annotations
 
 import hashlib
 import os
-from collections import Counter
+import re
 from pathlib import Path
 
 import pytest
 
 from mdconv import MdconvError, convert_file
-from mdconv.model import Heading, Table
 
 CORPUS = Path(__file__).resolve().parent / "corpus"
 PASSING = CORPUS / "passing"
@@ -102,46 +101,62 @@ def ids(paths: list[Path]) -> list[str]:
     return [p.name for p in paths]
 
 
-def needs_pypdf(path: Path) -> None:
-    if path.suffix.lower() == ".pdf":
-        pytest.importorskip("pypdf", reason="PDF の検体には pypdf が必要")
+_HEADING = re.compile(r"^(#{1,6})\s+(.*)$")
+_TABLE_SEPARATOR = re.compile(r"^\|(?:\s*:?-{2,}:?\s*\|)+\s*$")
 
 
 def summarize(path: Path) -> str:
-    """変換結果の要約。人間がレビューできる粒度に落とす。"""
+    """変換結果の要約。人間がレビューできる粒度に落とす。
+
+    v0.2 から本文は markitdown が作る文字列なので、構造は Markdown を
+    読み直して数える（内部表現に依存しない = エンジンを替えても比べられる）。
+    """
     result = convert_file(path)
-    doc = result.document
-    kinds = Counter(type(b).__name__ for b in doc.blocks)
+    lines_in = result.markdown.splitlines()
+
+    headings = [(len(m.group(1)), m.group(2).strip()) for m in map(_HEADING.match, lines_in) if m]
+    tables = _table_shapes(lines_in)
 
     lines = [
         f"# {path.name}",
         "",
-        f"- 形式: {doc.source_format}",
-        f"- タイトル: {doc.title or '(なし)'}",
+        f"- 形式: {result.format}",
+        f"- タイトル: {result.title or '(なし)'}",
         f"- 文字数: {len(result.markdown)}",
+        f"- 行数: {len(lines_in)}",
+        f"- 画像: {len(result.assets)} 個",
         f"- SHA256: {hashlib.sha256(result.markdown.encode('utf-8')).hexdigest()}",
         "",
-        "## ブロックの内訳",
+        f"## 見出し（{len(headings)} 個）",
         "",
     ]
-    lines += [f"- {kind}: {count}" for kind, count in sorted(kinds.items())]
-
-    headings = [b for b in doc.blocks if isinstance(b, Heading)]
-    lines += ["", f"## 見出し（{len(headings)} 個）", ""]
-    lines += [
-        "- " + "#" * b.level + " " + "".join(s.text for s in b.spans).strip() for b in headings[:40]
-    ]
+    lines += ["- " + "#" * level + " " + text for level, text in headings[:40]]
     if len(headings) > 40:
         lines.append(f"- …ほか {len(headings) - 40} 個")
 
-    tables = [b for b in doc.blocks if isinstance(b, Table)]
     lines += ["", f"## 表（{len(tables)} 個）", ""]
-    lines += [f"- {len(t.rows) + (1 if t.header else 0)} 行 × {len(t.header)} 列" for t in tables]
+    lines += [f"- {rows} 行 × {cols} 列" for rows, cols in tables]
 
-    lines += ["", f"## 落とした情報の報告（{len(doc.notices)} 件）", ""]
-    lines += [f"- {n.message}" for n in doc.notices] or ["- (なし)"]
+    lines += ["", f"## 落とした情報の報告（{len(result.notices)} 件）", ""]
+    lines += [f"- {n.message}" for n in result.notices] or ["- (なし)"]
     lines += ["", "## 本文の先頭", "", "```", result.markdown[:400].rstrip(), "```", ""]
     return "\n".join(lines)
+
+
+def _table_shapes(lines: list[str]) -> list[tuple[int, int]]:
+    """表ごとの (行数, 列数)。区切り行を目印に数える。"""
+    shapes: list[tuple[int, int]] = []
+    for index, line in enumerate(lines):
+        if not _TABLE_SEPARATOR.match(line):
+            continue
+        cols = line.count("|") - 1
+        rows = 1  # 見出し行
+        cursor = index + 1
+        while cursor < len(lines) and lines[cursor].startswith("|"):
+            rows += 1
+            cursor += 1
+        shapes.append((rows, cols))
+    return shapes
 
 
 # -- passing --------------------------------------------------------------
@@ -160,7 +175,6 @@ def test_passing_document_converted_file_is_stored(path: Path):
     要約だけでは「実際にどんな Markdown になるのか」を人間が確認できない。
     `converted/` には CLI で変換したのと同じ成果物（画像を含む）が入る。
     """
-    needs_pypdf(path)
     result = convert_file(path)
     # 拡張子を残すのは、同名で形式違いの検体（test.docx と test.xlsx）が衝突するため。
     # なお画像の置き場所は拡張子を含まないので、まだ衝突しうる（T-23）
@@ -172,14 +186,13 @@ def test_passing_document_converted_file_is_stored(path: Path):
     assert converted.exists(), f"{converted.name} がない。UPDATE_GOLDEN=1 で生成できる"
     assert result.markdown == converted.read_text(encoding="utf-8")
 
-    for asset in result.document.assets:
+    for asset in result.assets:
         stored = converted.parent / asset.path
         assert stored.exists(), f"{asset.path} が置かれていない"
         assert stored.read_bytes() == asset.data, f"{asset.path} の中身が変わっている"
 
 
 def assert_output_is_frozen(path: Path, folder: Path) -> None:
-    needs_pypdf(path)
     summary = summarize(path)
     golden = expected_dir(folder) / f"{path.name}.summary.md"
 
@@ -194,7 +207,6 @@ def assert_output_is_frozen(path: Path, folder: Path) -> None:
 @pytest.mark.parametrize("path", documents(PASSING), ids=ids(documents(PASSING)))
 def test_passing_document_keeps_its_text(path: Path):
     """通った資料が空にならないこと（判定基準の最低ライン）。"""
-    needs_pypdf(path)
     assert convert_file(path).markdown.strip(), f"{path.name} の出力が空"
 
 
@@ -214,18 +226,16 @@ def test_powerpoint_recovers_text_inside_grouped_shapes():
 # -- failing --------------------------------------------------------------
 
 
-def test_pdf_warns_about_structure_it_cannot_restore():
-    """表が潰れる資料で、崩れていることを利用者が知れること。"""
-    pytest.importorskip("pypdf", reason="PDF の検体には pypdf が必要")
+def test_borderless_table_pdf_is_restored_as_a_table():
+    """罫線のない表が、段落に潰れず表として出ること（v0.2 で直った）。"""
     result = convert_file(find_sample("SPARSE-2024-INV-1234_borderless_table.pdf"))
-    assert any("表・段組み" in n.message for n in result.notices)
+    assert "| Product Code | Location |" in result.markdown
 
 
 def test_scanned_pdf_is_reported_as_having_no_text():
     """スキャン PDF は空になるが、その理由を伝えること。"""
-    pytest.importorskip("pypdf", reason="PDF の検体には pypdf が必要")
     result = convert_file(find_sample("MEDRPT-2024-PAT-3847_medical_report_scan.pdf"))
-    assert any("スキャン画像" in n.message for n in result.notices)
+    assert any("スキャン" in n.message for n in result.notices)
 
 
 @pytest.mark.parametrize("path", documents(FAILING), ids=ids(documents(FAILING)))
@@ -235,7 +245,6 @@ def test_failing_document_fails_gracefully(path: Path):
     出力の質は問わない（それが failing である理由）。ただし利用者に
     スタックトレースを見せないという約束（NFR-04）だけは守る。
     """
-    needs_pypdf(path)
     try:
         convert_file(path)
     except MdconvError:
@@ -285,7 +294,6 @@ def test_inbox_document_fails_gracefully_if_at_all(path: Path):
     inbox は人間が置いたばかりの場所なので、変換の質はまだ問わない。
     mdconv 自身の例外（原因を日本語で説明できるもの）以外が出たら、それは欠陥。
     """
-    needs_pypdf(path)
     try:
         convert_file(path)
     except MdconvError:

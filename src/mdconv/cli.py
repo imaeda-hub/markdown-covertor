@@ -58,12 +58,6 @@ def build_parser() -> argparse.ArgumentParser:
 
     fmt = parser.add_argument_group("形式ごとの調整")
     fmt.add_argument("--include-hidden", action="store_true", help="[xlsx] 非表示シートも出力")
-    fmt.add_argument("--max-rows", type=int, help="[xlsx] 1 シートあたりの最大行数")
-    fmt.add_argument("--no-notes", action="store_true", help="[pptx] 発表者ノートを出力しない")
-    fmt.add_argument("--page-headings", action="store_true", help="[pdf] ページ番号を見出しにする")
-    fmt.add_argument(
-        "--no-page-dividers", action="store_true", help="[pdf/pptx] 区切り線を入れない"
-    )
     return parser
 
 
@@ -129,11 +123,6 @@ def _options(args: argparse.Namespace) -> ConvertOptions:
         include_notices=args.include_notices,
         extract_images=not args.no_images,
         include_hidden=args.include_hidden,
-        max_rows=args.max_rows,
-        include_notes=not args.no_notes,
-        slide_dividers=not args.no_page_dividers,
-        page_dividers=not args.no_page_dividers,
-        page_headings=args.page_headings,
     )
 
 

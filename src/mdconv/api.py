@@ -1,71 +1,60 @@
 """公開 API。CLI も GUI も将来のサーバもここだけを呼ぶ。
 
-from mdconv import convert_file
-result = convert_file("資料.docx")
-print(result.markdown)
+    from mdconv import convert_file
+    result = convert_file("資料.docx")
+    print(result.markdown)
+    for notice in result.notices:
+        print("落ちた情報:", notice.message)
+
+変換の流れ:
+
+    ①形式判定 → ②markitdown で変換 → ③元ファイルを検査 → ④出力を整える
+     registry     engine              inspection        postprocess
+
+②が本体、③④が**markitdown だけでは足りない部分の補完**。
 """
 
 from __future__ import annotations
 
-import inspect
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from .model import Document, Notice
+from . import engine, media, postprocess
+from .inspection import inspect
 from .registry import detect
-from .renderer import RenderOptions, render
+from .types import Asset, Notice
 
 
 @dataclass(slots=True)
 class ConvertOptions:
-    """変換の挙動。フォーマット固有の項目も、関係するコンバータにだけ渡される。"""
+    """変換の挙動。"""
 
-    # 出力
     heading_offset: int = 0
     front_matter: bool = False
     include_notices: bool = False
 
-    # 共通
     extract_images: bool = True
-    """画像を assets/ に書き出して参照を張る。False なら出力せず警告のみ。"""
+    """画像を assets/ に書き出して参照を張る。False なら本文から取り除く。"""
 
-    # Excel
     include_hidden: bool = False
-    max_rows: int | None = None
-
-    # PowerPoint
-    include_notes: bool = True
-    slide_dividers: bool = True
-
-    # PDF
-    page_dividers: bool = True
-    page_headings: bool = False
-
-    def render_options(self) -> RenderOptions:
-        return RenderOptions(
-            heading_offset=self.heading_offset,
-            front_matter=self.front_matter,
-            include_notices=self.include_notices,
-        )
+    """Excel の非表示シートも出力する。既定は落とす（情報漏洩を避けるため）。"""
 
 
 @dataclass(slots=True)
 class ConvertResult:
     markdown: str
-    document: Document
     source: Path
+    format: str
+    title: str | None = None
     notices: list[Notice] = field(default_factory=list)
-
-    @property
-    def format(self) -> str:
-        return self.document.source_format
+    assets: list[Asset] = field(default_factory=list)
 
     def write(self, destination: str | Path) -> Path:
-        """Markdown を書き出す。抽出済み画像は本文の参照と同じ相対パスに置く。"""
+        """Markdown を書き出す。画像は本文の参照と同じ相対パスに置く。"""
         out = Path(destination)
         out.parent.mkdir(parents=True, exist_ok=True)
         out.write_text(self.markdown, encoding="utf-8")
-        for asset in self.document.assets:
+        for asset in self.assets:
             target = out.parent / asset.path
             target.parent.mkdir(parents=True, exist_ok=True)
             target.write_bytes(asset.data)
@@ -85,16 +74,53 @@ def convert_file(
         raise FileNotFoundError(f"ファイルがありません: {source}")
 
     fmt = detect(source, explicit=format)
-    converter = fmt.loader()
-    document = converter(str(source), **_kwargs_for(converter, opts))
-    document.source_name = source.name
-    markdown = render(document, opts.render_options())
+    markdown, engine_title = engine.convert(source)
+    found = inspect(source, fmt.name, markdown)
+    found.format = fmt.name
+
+    markdown, assets = _apply(markdown, found, opts, source)
+    title = found.title or engine_title
+    notices = list(found.notices)
+
+    if opts.front_matter:
+        markdown = postprocess.front_matter(title, source.name, fmt.name) + "\n\n" + markdown
+    if opts.include_notices and notices:
+        markdown = markdown + "\n\n" + postprocess.notices_comment(notices)
+
     return ConvertResult(
-        markdown=markdown, document=document, source=source, notices=document.notices
+        markdown=postprocess.tidy(markdown),
+        source=source,
+        format=fmt.name,
+        title=title,
+        notices=notices,
+        assets=assets,
     )
 
 
-def _kwargs_for(converter, opts: ConvertOptions) -> dict:
-    """コンバータが受け取れるオプションだけを抜き出して渡す。"""
-    accepted = set(inspect.signature(converter).parameters) - {"path"}
-    return {name: getattr(opts, name) for name in accepted if hasattr(opts, name)}
+def _apply(markdown, found, opts: ConvertOptions, source: Path):
+    """本文への補正をまとめて適用する。順序に意味があるので 1 か所に集める。"""
+    # 非表示シートは真っ先に落とす。以降の処理で中身が混ざらないように
+    if found.hidden_sheets and not opts.include_hidden:
+        markdown = postprocess.drop_sections(markdown, found.hidden_sheets)
+        names = "、".join(found.hidden_sheets)
+        found.warn(f"非表示シート「{names}」を除外しました（--include-hidden で出力）")
+
+    markdown = postprocess.clean_tables(markdown)
+    markdown = postprocess.promote_empty_table_header(markdown)
+
+    assets: list[Asset] = []
+    if opts.extract_images:
+        images = media.ordered_images(source, found.format)
+        markdown, assets, unmatched = postprocess.place_images(
+            markdown, images, f"assets/{source.stem}"
+        )
+        if unmatched:
+            # Word 以外は markitdown が図形名で参照するだけなので実体に辿り着けない
+            reason = "（この形式では実体を取り出せません）" if found.format != "docx" else ""
+            found.warn(f"画像を {unmatched} 個出力していません{reason}")
+    else:
+        markdown, dropped = postprocess.drop_images(markdown)
+        if dropped:
+            found.warn(f"画像を {dropped} 個出力していません")
+
+    return postprocess.shift_headings(markdown, opts.heading_offset), assets

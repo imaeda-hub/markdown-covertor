@@ -68,46 +68,35 @@ def test_broken_file_returns_error_code(tmp_path, capsys):
 
 @pytest.fixture
 def with_image(tmp_path):
-    body = f'<w:p><w:drawing><a:blip {fx.A} r:embed="rId5"/></w:drawing></w:p>' + fx.para("本文")
-    return fx.docx(
-        tmp_path / "図あり.docx",
-        body,
-        rels={"rId5": "media/image1.png"},
-        media={"image1.png": b"PNG"},
-    )
+    return fx.docx(tmp_path / "図あり.docx", fx.para("本文"), picture=fx.png())
 
 
 def test_images_are_written_next_to_the_output_file(with_image, tmp_path):
     out = tmp_path / "out" / "a.md"
     assert main([str(with_image), "-o", str(out)]) == 0
-    assert (tmp_path / "out" / "assets" / "図あり" / "image1.png").read_bytes() == b"PNG"
-    assert "![image1.png](assets/図あり/image1.png)" in out.read_text(encoding="utf-8")
+    written = out.read_text(encoding="utf-8")
+    assert "](assets/図あり/" in written
+    assert list((tmp_path / "out" / "assets" / "図あり").glob("*.png"))
 
 
 def test_images_of_different_documents_do_not_collide(tmp_path):
-    """同名の image1.png を持つ 2 文書を一括変換しても、互いに上書きしないこと。"""
+    """同名の画像を持つ 2 文書を一括変換しても、互いに上書きしないこと。"""
     src = tmp_path / "src"
     src.mkdir()
-    body = f'<w:p><w:drawing><a:blip {fx.A} r:embed="rId5"/></w:drawing></w:p>'
-    for name, data in (("a", b"AAA"), ("b", b"BBB")):
-        fx.docx(
-            src / f"{name}.docx",
-            body,
-            rels={"rId5": "media/image1.png"},
-            media={"image1.png": data},
-        )
+    for name, color in (("a", (255, 0, 0)), ("b", (0, 0, 255))):
+        fx.docx(src / f"{name}.docx", fx.para(name), picture=fx.png(color))
 
     out = tmp_path / "out"
     assert main([str(src), "-o", str(out)]) == 0
-    assert (out / "assets" / "a" / "image1.png").read_bytes() == b"AAA"
-    assert (out / "assets" / "b" / "image1.png").read_bytes() == b"BBB"
+    assert list((out / "assets" / "a").glob("*.png"))
+    assert list((out / "assets" / "b").glob("*.png"))
 
 
 def test_no_images_option_skips_extraction(with_image, tmp_path, capsys):
     out = tmp_path / "out" / "a.md"
     assert main([str(with_image), "-o", str(out), "--no-images"]) == 0
     assert not (tmp_path / "out" / "assets").exists()
-    assert "画像を出力しませんでした" in capsys.readouterr().err
+    assert "画像を 1 個出力していません" in capsys.readouterr().err
 
 
 def test_stdout_cannot_hold_images_so_extraction_is_disabled(with_image, capsys):
@@ -115,7 +104,7 @@ def test_stdout_cannot_hold_images_so_extraction_is_disabled(with_image, capsys)
     assert main([str(with_image)]) == 0
     captured = capsys.readouterr()
     assert "![" not in captured.out
-    assert "画像を出力しませんでした" in captured.err
+    assert "画像を 1 個出力していません" in captured.err
 
 
 def test_heading_offset_option(sample, capsys):

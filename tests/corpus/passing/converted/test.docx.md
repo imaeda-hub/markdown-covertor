@@ -1,3 +1,5 @@
+AutoGen: Enabling Next-Gen LLM Applications via Multi-Agent Conversation
+
 Qingyun Wu , Gagan Bansal , Jieyu Zhang, Yiran Wu, Beibin Li, Erkang Zhu, Li Jiang, Xiaoyun Zhang, Shaokun Zhang, Jiale Liu, Ahmed Awadallah, Ryen W. White, Doug Burger, Chi Wang
 
 # Abstract
@@ -23,4 +25,4 @@ Here is a random table for .docx parsing test purposes:
 
 Test Image:
 
-![image1.png](assets/test/image1.png)
+![图形用户界面, 文本, 应用程序, 信件  AI 生成的内容可能不正确。](assets/test/image-96e266e9c8f5.png)
