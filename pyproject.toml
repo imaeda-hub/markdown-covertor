@@ -1,0 +1,35 @@
+[project]
+name = "mdconv"
+version = "0.1.0"
+description = "Word / Excel / PowerPoint / PDF の資料を Markdown に変換するツール"
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "MIT" }
+dependencies = []
+
+[project.optional-dependencies]
+# PDF 変換に必要（コア機能はオフラインかつ依存ゼロで動く）
+pdf = ["pypdf>=5.1.0"]
+dev = ["pytest>=8.0", "ruff>=0.6"]
+
+[project.scripts]
+mdconv = "mdconv.cli:main"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/mdconv"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src"]
+addopts = "-q"
+
+[tool.ruff]
+line-length = 100
+src = ["src", "tests"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B"]
