@@ -27,7 +27,7 @@ Markdown への写像規則の詳細は [05-変換ルール](05-conversion-rules
 |---|---|---|---|
 | FR-201 | ✅ | 見出しスタイルの段落は、対応する階層の Markdown 見出しになる | `test_headings_and_paragraph` |
 | FR-202 | ✅ | 箇条書き・番号付きリストは、入れ子の深さを保って変換される | `test_bullet_list_is_grouped_into_one_block` |
-| FR-203 | ✅ | 表は GFM の表になり、1 行目をヘッダとして扱う | `test_table_first_row_is_header` |
+| FR-203 | ✅ | Word / PowerPoint の表は GFM の表になり、1 行目をヘッダとして扱う | `test_table_first_row_is_header` |
 | FR-204 | ✅ | 太字・斜体・打消し線は対応する記法になる | `test_run_decorations` |
 | FR-205 | ✅ | ハイパーリンクはリンク先を保ったまま変換される | `test_hyperlink_resolves_relationship` |
 | FR-206 | ✅ | 本文中の記号（`*` `_` `[` 等）はエスケープされ、意図しない装飾にならない | `test_special_characters_are_escaped` |
@@ -38,6 +38,8 @@ Markdown への写像規則の詳細は [05-変換ルール](05-conversion-rules
 | FR-211 | 📋 | Word の脚注・コメントは本文末尾に集約して出力される | 未 |
 | FR-212 | 📋 | Word の数式は LaTeX 記法（`$...$`）に変換される | 未 |
 | FR-213 | 📋 | 表の結合セルは、値を複製せず結合の事実が分かる形で出力される | 未 |
+| FR-214 | ✅ | Excel の見出し行は自動判定する（1 行目固定にしない） | `test_first_row_containing_a_number_is_not_a_header` |
+| FR-215 | ✅ | Word の表題は本文の見出しにせず、文書のタイトルとして保持する | `test_title_style_is_not_a_heading` |
 
 ## 3. 失われる情報の扱い（FR-3xx）
 
@@ -45,12 +47,14 @@ Markdown への写像規則の詳細は [05-変換ルール](05-conversion-rules
 
 | ID | 状態 | 要件 | 確認方法 |
 |---|---|---|---|
-| FR-301 | ✅ | 画像を出力しない設定のとき、システムは画像を省いた旨を警告として報告する | `test_image_is_reported_when_not_extracted` |
-| FR-302 | ✅ | 利用者が指定したとき、システムは画像を `assets/` に書き出して参照を張る | `test_image_is_extracted_on_demand` |
+| FR-301 | ✅ | 画像を出力しない設定のとき、システムは画像を省いた旨を警告として報告する | `test_image_is_reported_when_extraction_is_off` |
+| FR-302 | ✅ | システムは既定で画像を `assets/` に書き出し、参照を張る | `test_image_is_extracted_by_default` |
 | FR-303 | ✅ | 非表示シートは既定で除外し、除外した事実を警告として報告する | `test_hidden_sheet_is_excluded_by_default` |
 | FR-304 | ✅ | テキストを持たない PDF ページがあるとき、スキャン画像の可能性を警告する | `test_empty_pdf_reports_no_text` |
 | FR-305 | ✅ | 利用者が指定したとき、警告を出力 Markdown の末尾にコメントとして残せる | `test_notices_are_optional` |
 | FR-306 | 📋 | 図形・グラフ・SmartArt を検出したとき、その存在を警告として報告する | 未 |
+| FR-307 | ✅ | 標準出力へ変換するとき、画像の置き場所がないため書き出しを止めて警告する | `test_stdout_cannot_hold_images_so_extraction_is_disabled` |
+| FR-308 | ✅ | 表題を本文から省いたとき、その旨を警告として報告する | `test_title_style_is_not_a_heading` |
 
 ## 4. コマンドライン（FR-4xx）
 

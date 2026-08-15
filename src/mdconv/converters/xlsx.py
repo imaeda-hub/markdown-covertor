@@ -7,6 +7,7 @@
 from __future__ import annotations
 
 import re
+from dataclasses import dataclass
 from xml.etree import ElementTree as ET
 
 from ..model import Document, Heading, Paragraph, Span, Table
@@ -14,6 +15,15 @@ from ..ooxml import OoxmlPackage, attr, q
 
 WORKBOOK_PART = "xl/workbook.xml"
 _CELL_REF = re.compile(r"^([A-Z]+)(\d+)$")
+
+
+@dataclass(slots=True)
+class _Cell:
+    """セルの値と「データらしさ」。見出し行の推定に型の情報が要るため保持する。"""
+
+    text: str
+    is_data: bool = False
+    """数値・真偽値・エラー値なら True。見出しには通常こうした値が来ない。"""
 
 
 def convert(path: str, *, include_hidden: bool = False, max_rows: int | None = None) -> Document:
@@ -40,31 +50,56 @@ def convert(path: str, *, include_hidden: bool = False, max_rows: int | None = N
 
             doc.add(Heading(level=1, spans=[Span(name)]))
             grid = _sheet_grid(pkg.xml(target), shared)
-            if max_rows is not None and len(grid) > max_rows:
-                doc.warn(f"シート「{name}」を {max_rows} 行で打ち切りました（全 {len(grid)} 行）")
-                grid = grid[:max_rows]
             if not grid:
                 doc.add(Paragraph(spans=[Span("（空のシート）")]))
                 continue
-            doc.add(_table(grid))
+            # 見出し行の判定は打ち切る前の表全体で行う。
+            # 先に切ると、下にあった数値が消えて判定が変わってしまうため
+            header = has_header_row(grid)
+            if max_rows is not None and len(grid) > max_rows:
+                doc.warn(f"シート「{name}」を {max_rows} 行で打ち切りました（全 {len(grid)} 行）")
+                grid = grid[:max_rows]
+            doc.add(_table(grid, header=header))
     return doc
 
 
-def _table(grid: list[list[str]]) -> Table:
+def _table(grid: list[list[_Cell]], *, header: bool) -> Table:
     width = max(len(row) for row in grid)
-    padded = [row + [""] * (width - len(row)) for row in grid]
-    header = [[Span(c)] for c in padded[0]]
-    rows = [[[Span(c)] for c in row] for row in padded[1:]]
+    padded = [row + [_Cell("")] * (width - len(row)) for row in grid]
+    if header:
+        header = [[Span(c.text)] for c in padded[0]]
+        body = padded[1:]
+    else:
+        # 見出しが無い表。GFM は空ヘッダを立てて全行をデータとして出す
+        header = [[Span("")] for _ in range(width)]
+        body = padded
+    rows = [[[Span(c.text)] for c in row] for row in body]
     return Table(header=header, rows=rows)
 
 
-def _sheet_grid(sheet: ET.Element, shared: list[str]) -> list[list[str]]:
-    """sheetData を二次元の文字列配列にする。空行・空列は前詰めせず位置を保つ。"""
+def has_header_row(grid: list[list[_Cell]]) -> bool:
+    """1 行目が見出し行かどうかを推定する。
+
+    Excel のファイルには「ここが見出し」という情報が無いので、次の経験則で判定する。
+      * 1 行目に値があり、そのすべてが文字列（数値・真偽値・エラーでない）
+      * かつ 2 行目以降に数値などのデータらしい値が 1 つ以上ある
+    判定ルールは docs/specs/05-conversion-rules.md に明記している。
+    """
+    if len(grid) < 2:
+        return False
+    first = [c for c in grid[0] if c.text]
+    if not first or any(c.is_data for c in first):
+        return False
+    return any(c.is_data for row in grid[1:] for c in row)
+
+
+def _sheet_grid(sheet: ET.Element, shared: list[str]) -> list[list[_Cell]]:
+    """sheetData を二次元のセル配列にする。空行・空列は前詰めせず位置を保つ。"""
     data = sheet.find(q("x", "sheetData"))
     if data is None:
         return []
 
-    cells: dict[tuple[int, int], str] = {}
+    cells: dict[tuple[int, int], _Cell] = {}
     max_row = max_col = -1
     for r_index, row in enumerate(data.findall(q("x", "row"))):
         row_no = int(row.get("r") or r_index + 1) - 1
@@ -72,7 +107,7 @@ def _sheet_grid(sheet: ET.Element, shared: list[str]) -> list[list[str]]:
             ref = cell.get("r")
             col_no = _column_index(ref) if ref else c_index
             value = _cell_value(cell, shared)
-            if value == "":
+            if value.text == "":
                 continue
             cells[(row_no, col_no)] = value
             max_row = max(max_row, row_no)
@@ -80,29 +115,31 @@ def _sheet_grid(sheet: ET.Element, shared: list[str]) -> list[list[str]]:
 
     if max_row < 0:
         return []
-    grid = [["" for _ in range(max_col + 1)] for _ in range(max_row + 1)]
+    grid = [[_Cell("") for _ in range(max_col + 1)] for _ in range(max_row + 1)]
     for (r, c), value in cells.items():
         grid[r][c] = value
     # 完全に空の行は落とす（Excel は書式だけの行を大量に持つことがある）
-    return [row for row in grid if any(cell for cell in row)]
+    return [row for row in grid if any(cell.text for cell in row)]
 
 
-def _cell_value(cell: ET.Element, shared: list[str]) -> str:
+def _cell_value(cell: ET.Element, shared: list[str]) -> _Cell:
     ctype = cell.get("t")
     if ctype == "inlineStr":
-        return _rich_text(cell.find(q("x", "is")))
+        return _Cell(_rich_text(cell.find(q("x", "is"))))
     value_el = cell.find(q("x", "v"))
     if value_el is None or value_el.text is None:
-        return ""
+        return _Cell("")
     raw = value_el.text
     if ctype == "s":
         index = int(raw)
-        return shared[index] if 0 <= index < len(shared) else ""
+        return _Cell(shared[index] if 0 <= index < len(shared) else "")
+    if ctype == "str":
+        return _Cell(raw)  # 数式が返した文字列
     if ctype == "b":
-        return "TRUE" if raw == "1" else "FALSE"
+        return _Cell("TRUE" if raw == "1" else "FALSE", is_data=True)
     if ctype == "e":
-        return raw  # #DIV/0! などのエラー値はそのまま見せる
-    return _trim_number(raw)
+        return _Cell(raw, is_data=True)  # #DIV/0! などのエラー値はそのまま見せる
+    return _Cell(_trim_number(raw), is_data=True)
 
 
 def _trim_number(raw: str) -> str:

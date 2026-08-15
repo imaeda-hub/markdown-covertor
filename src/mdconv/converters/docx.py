@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import re
+from pathlib import Path
 from xml.etree import ElementTree as ET
 
 from ..model import (
@@ -26,7 +27,7 @@ _HEADING_NUM = re.compile(r"(\d+)\s*$")
 _HEADING_WORDS = ("heading", "見出し", "titre", "berschrift", "titolo", "encabezado")
 
 
-def convert(path: str, *, extract_images: bool = False) -> Document:
+def convert(path: str, *, extract_images: bool = True) -> Document:
     doc = Document(source_format="docx", source_name=path)
     with OoxmlPackage(path) as pkg:
         parser = _DocxParser(pkg, doc, extract_images=extract_images)
@@ -40,9 +41,11 @@ class _DocxParser:
         self.doc = doc
         self.extract_images = extract_images
         self.rels = pkg.rels(DOCUMENT_PART)
-        self.heading_levels = _heading_styles(pkg)
+        self.style_roles = _style_roles(pkg)
         self.numbering = _numbering(pkg)
-        self._image_count = 0
+        self._title_used = False
+        # 一括変換で別々の文書の image1.png が衝突しないよう、文書名でフォルダを分ける
+        self._asset_dir = f"assets/{Path(doc.source_name or 'document').stem}"
 
     # -- 本体 -------------------------------------------------------------
     def run(self) -> None:
@@ -84,9 +87,24 @@ class _DocxParser:
             return blocks
 
         style = _style_id(p)
-        level = self.heading_levels.get(style or "")
-        if level:
-            blocks.append(Heading(level=level, spans=spans))
+        role = self.style_roles.get(style or "")
+        if role == "title" and not self._title_used:
+            # 表題は文書のタイトルであって本文の見出しではない。`#` が 2 つ並ぶのを避け、
+            # 代わりにメタ情報として保持する（--front-matter で出力される）。
+            # 本文の表題は docProps のタイトルより優先する。利用者が目にしているのは本文であり、
+            # 上書きしないと「--front-matter で残せます」という案内が嘘になるため。
+            self._title_used = True
+            self.doc.title = "".join(s.text for s in spans).strip()
+            self.doc.warn(
+                f"表題「{self.doc.title}」は本文に出力していません（--front-matter で残せます）"
+            )
+            return blocks
+        if role in ("title", "subtitle"):
+            # 2 つ目以降の表題と副題は、捨てずに段落として残す
+            blocks.append(Paragraph(spans=spans))
+            return blocks
+        if isinstance(role, int):
+            blocks.append(Heading(level=role, spans=spans))
             return blocks
 
         num = _num_ref(p)
@@ -154,11 +172,11 @@ class _DocxParser:
                 continue
             name = target.rsplit("/", 1)[-1]
             if self.extract_images:
-                self.doc.assets.append(_asset(self.pkg, target, name))
-                out.append(Image(path=f"assets/{name}", alt=name))
+                path = f"{self._asset_dir}/{name}"
+                self.doc.assets.append(Asset(path=path, data=self.pkg.read(target)))
+                out.append(Image(path=path, alt=name))
             else:
-                self._image_count += 1
-                self.doc.warn(f"画像を出力しませんでした ({name})。--extract-images で書き出せます")
+                self.doc.warn(f"画像を出力しませんでした ({name})")
         return out
 
     # -- 表 ---------------------------------------------------------------
@@ -185,24 +203,28 @@ class _DocxParser:
 # --------------------------------------------------------------------------
 
 
-def _heading_styles(pkg: OoxmlPackage) -> dict[str, int]:
-    """styleId -> 見出しレベル の対応表を作る。"""
-    levels: dict[str, int] = {}
+def _style_roles(pkg: OoxmlPackage) -> dict[str, int | str]:
+    """styleId -> 役割 の対応表。値は見出しレベル(int) か "title" / "subtitle"。"""
+    roles: dict[str, int | str] = {}
     root = pkg.xml_or_none("word/styles.xml")
     if root is None:
-        return levels
+        return roles
     for style in root.findall(q("w", "style")):
         style_id = attr(style, "w", "styleId") or ""
         name_el = style.find(q("w", "name"))
         name = (attr(name_el, "w", "val") or "") if name_el is not None else ""
         level = _heading_level(style_id) or _heading_level(name)
         if level:
-            levels[style_id] = level
-        elif style_id.lower() == "title" or name.lower() == "title":
-            levels[style_id] = 1
-        elif style_id.lower() == "subtitle" or name.lower() == "subtitle":
-            levels[style_id] = 2
-    return levels
+            roles[style_id] = level
+        elif _is_named(style_id, name, "title", "表題"):
+            roles[style_id] = "title"
+        elif _is_named(style_id, name, "subtitle", "副題"):
+            roles[style_id] = "subtitle"
+    return roles
+
+
+def _is_named(style_id: str, name: str, *candidates: str) -> bool:
+    return any(label.lower() in candidates for label in (style_id, name))
 
 
 def _heading_level(label: str) -> int | None:
@@ -299,7 +321,3 @@ def _is_monospace(props: ET.Element | None) -> bool:
         return False
     name = (attr(fonts, "w", "ascii") or "").lower()
     return any(k in name for k in ("mono", "consolas", "courier", "menlo", "ゴシック等幅"))
-
-
-def _asset(pkg: OoxmlPackage, target: str, name: str) -> Asset:
-    return Asset(name=name, data=pkg.read(target))

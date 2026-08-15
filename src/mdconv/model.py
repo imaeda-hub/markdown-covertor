@@ -120,9 +120,13 @@ class Notice:
 
 @dataclass(slots=True)
 class Asset:
-    """本文から参照される埋め込みファイル（画像など）。"""
+    """本文から参照される埋め込みファイル（画像など）。
 
-    name: str
+    path は Markdown ファイルから見た相対パス（例 `assets/資料/image1.png`）。
+    本文の Image.path と同じ値にすることで、参照とファイルの置き場所が必ず一致する。
+    """
+
+    path: str
     data: bytes
 
 

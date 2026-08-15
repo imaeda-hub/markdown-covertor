@@ -20,7 +20,7 @@ pip install -e ".[pdf]"   # PDF も使う場合
 mdconv 資料.docx                      # 標準出力へ
 mdconv 資料.docx -o 資料.md            # ファイルへ
 mdconv 資料/ -o out/ --recursive      # ディレクトリ一括
-mdconv 資料.docx --extract-images     # 画像も assets/ に書き出す
+mdconv 資料.docx -o 資料.md --no-images # 画像を書き出さない
 mdconv 見積.xlsx --include-hidden     # 非表示シートも含める
 mdconv 提案.pptx --no-notes           # 発表者ノートを除く
 ```
@@ -42,7 +42,7 @@ for notice in result.notices:
 |---|---|
 | `-o, --output` | 出力先ファイル／ディレクトリ |
 | `-r, --recursive` | ディレクトリを再帰的に探索 |
-| `--extract-images` | 画像を `assets/` に書き出す |
+| `--no-images` | 画像を書き出さない（既定は出力先の `assets/` に書き出す） |
 | `--front-matter` | YAML フロントマター（タイトル・元ファイル名）を付ける |
 | `--include-notices` | 変換時の警告を Markdown 末尾のコメントに残す |
 | `--heading-offset N` | 見出しレベルを N 段下げる |

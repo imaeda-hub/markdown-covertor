@@ -66,6 +66,58 @@ def test_broken_file_returns_error_code(tmp_path, capsys):
     assert "[失敗]" in capsys.readouterr().err
 
 
+@pytest.fixture
+def with_image(tmp_path):
+    body = f'<w:p><w:drawing><a:blip {fx.A} r:embed="rId5"/></w:drawing></w:p>' + fx.para("本文")
+    return fx.docx(
+        tmp_path / "図あり.docx",
+        body,
+        rels={"rId5": "media/image1.png"},
+        media={"image1.png": b"PNG"},
+    )
+
+
+def test_images_are_written_next_to_the_output_file(with_image, tmp_path):
+    out = tmp_path / "out" / "a.md"
+    assert main([str(with_image), "-o", str(out)]) == 0
+    assert (tmp_path / "out" / "assets" / "図あり" / "image1.png").read_bytes() == b"PNG"
+    assert "![image1.png](assets/図あり/image1.png)" in out.read_text(encoding="utf-8")
+
+
+def test_images_of_different_documents_do_not_collide(tmp_path):
+    """同名の image1.png を持つ 2 文書を一括変換しても、互いに上書きしないこと。"""
+    src = tmp_path / "src"
+    src.mkdir()
+    body = f'<w:p><w:drawing><a:blip {fx.A} r:embed="rId5"/></w:drawing></w:p>'
+    for name, data in (("a", b"AAA"), ("b", b"BBB")):
+        fx.docx(
+            src / f"{name}.docx",
+            body,
+            rels={"rId5": "media/image1.png"},
+            media={"image1.png": data},
+        )
+
+    out = tmp_path / "out"
+    assert main([str(src), "-o", str(out)]) == 0
+    assert (out / "assets" / "a" / "image1.png").read_bytes() == b"AAA"
+    assert (out / "assets" / "b" / "image1.png").read_bytes() == b"BBB"
+
+
+def test_no_images_option_skips_extraction(with_image, tmp_path, capsys):
+    out = tmp_path / "out" / "a.md"
+    assert main([str(with_image), "-o", str(out), "--no-images"]) == 0
+    assert not (tmp_path / "out" / "assets").exists()
+    assert "画像を出力しませんでした" in capsys.readouterr().err
+
+
+def test_stdout_cannot_hold_images_so_extraction_is_disabled(with_image, capsys):
+    """標準出力には画像の置き場所がないため、既定でも書き出さず警告する。"""
+    assert main([str(with_image)]) == 0
+    captured = capsys.readouterr()
+    assert "![" not in captured.out
+    assert "画像を出力しませんでした" in captured.err
+
+
 def test_heading_offset_option(sample, capsys):
     main([str(sample), "--heading-offset", "1"])
     assert capsys.readouterr().out.startswith("## 見出し")

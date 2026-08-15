@@ -26,7 +26,8 @@ class ConvertOptions:
     include_notices: bool = False
 
     # 共通
-    extract_images: bool = False
+    extract_images: bool = True
+    """画像を assets/ に書き出して参照を張る。False なら出力せず警告のみ。"""
 
     # Excel
     include_hidden: bool = False
@@ -59,16 +60,15 @@ class ConvertResult:
     def format(self) -> str:
         return self.document.source_format
 
-    def write(self, destination: str | Path, *, assets_dir: str = "assets") -> Path:
-        """Markdown を書き出す。抽出済み画像があれば assets_dir にも書き出す。"""
+    def write(self, destination: str | Path) -> Path:
+        """Markdown を書き出す。抽出済み画像は本文の参照と同じ相対パスに置く。"""
         out = Path(destination)
         out.parent.mkdir(parents=True, exist_ok=True)
         out.write_text(self.markdown, encoding="utf-8")
-        if self.document.assets:
-            asset_root = out.parent / assets_dir
-            asset_root.mkdir(parents=True, exist_ok=True)
-            for asset in self.document.assets:
-                (asset_root / asset.name).write_bytes(asset.data)
+        for asset in self.document.assets:
+            target = out.parent / asset.path
+            target.parent.mkdir(parents=True, exist_ok=True)
+            target.write_bytes(asset.data)
         return out
 
 

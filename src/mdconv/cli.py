@@ -50,7 +50,11 @@ def build_parser() -> argparse.ArgumentParser:
     out.add_argument(
         "--include-notices", action="store_true", help="変換時の警告を末尾のコメントに残す"
     )
-    out.add_argument("--extract-images", action="store_true", help="画像を assets/ に書き出す")
+    out.add_argument(
+        "--no-images",
+        action="store_true",
+        help="画像を書き出さない（既定は出力先の assets/ に書き出す）",
+    )
 
     fmt = parser.add_argument_group("形式ごとの調整")
     fmt.add_argument("--include-hidden", action="store_true", help="[xlsx] 非表示シートも出力")
@@ -66,6 +70,9 @@ def build_parser() -> argparse.ArgumentParser:
 def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
     options = _options(args)
+    # 標準出力に書く場合、画像の置き場所が決まらないので書き出しを止める
+    if args.output is None:
+        options.extract_images = False
 
     try:
         targets = _collect(args.inputs, recursive=args.recursive)
@@ -120,7 +127,7 @@ def _options(args: argparse.Namespace) -> ConvertOptions:
         heading_offset=args.heading_offset,
         front_matter=args.front_matter,
         include_notices=args.include_notices,
-        extract_images=args.extract_images,
+        extract_images=not args.no_images,
         include_hidden=args.include_hidden,
         max_rows=args.max_rows,
         include_notes=not args.no_notes,

@@ -35,6 +35,7 @@ DEFAULT_STYLES = f"""<w:styles {W}>
   <w:style w:type="paragraph" w:styleId="Heading1"><w:name w:val="heading 1"/></w:style>
   <w:style w:type="paragraph" w:styleId="Heading2"><w:name w:val="heading 2"/></w:style>
   <w:style w:type="paragraph" w:styleId="Title"><w:name w:val="Title"/></w:style>
+  <w:style w:type="paragraph" w:styleId="Subtitle"><w:name w:val="Subtitle"/></w:style>
   <w:style w:type="paragraph" w:styleId="Quote"><w:name w:val="Quote"/></w:style>
 </w:styles>"""
 
