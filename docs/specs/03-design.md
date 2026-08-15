@@ -35,7 +35,8 @@
 | `src/mdconv/converters/*.py` | 形式ごとの解析 | **高** |
 | `tests/fixtures.py` | テスト用の最小 Office ファイル生成 | 中 |
 | `tests/test_docs_consistency.py` | 仕様書の健全性チェック（リンク・ID・テスト参照） | 低 |
-| `tests/assets/` | 実ファイルの回帰テスト資産（本物の Office ファイルと、固定した出力） | 低 |
+| `tests/assets/` | 生成した Office ファイルと、固定した出力 | 低 |
+| `tests/corpus/` | 実資料の検体（`inbox` / `passing` / `failing`） | **高**（毎回増える） |
 | `tools/build_fixtures.py` | `tests/assets/` の入力ファイルを作り直す開発用スクリプト | 低 |
 
 ファイル構成を変えたら、**この表も一緒に直す**（ループ手順書 ⑦.5）。
@@ -131,12 +132,17 @@ Document
 | 層 | 何を確かめるか | 置き場所 |
 |---|---|---|
 | 手書き XML | 「この XML をこう読む」という仕様。テストを読めば挙動が分かる | `tests/fixtures.py` + 各 `test_*.py` |
-| 実ファイル | 本物の Office が吐く構造で壊れないこと。**想定外を検出する** | `tests/assets/` + `test_real_files.py` |
+| 生成した実ファイル | 本物の Office 形式で壊れないこと。**想定外を検出する** | `tests/assets/` + `test_real_files.py` |
+| 実資料の検体 | 現場の資料で通るか。**通らなかった実例を残す** | `tests/corpus/` + `test_corpus.py` |
 
 手書き XML は自分の想定しか書けないので、想定外は見つけられない。
 実際、実ファイル層を入れた初日に「スタイル側に番号定義がある箇条書き」の
 取りこぼし（FR-216）が見つかった。逆に実ファイルだけでは、
 どの XML 構造が原因で壊れたのかが分からない。**両方いる。**
+
+検体（`tests/corpus/`）は 3 つ目の層で、**直っていないものを消さずに置いておく**ための場所。
+`failing/` の資料は毎回のループで再変換され、直れば `passing/` に昇格する。
+運用は [`tests/corpus/README.md`](../../tests/corpus/README.md) を参照。
 
 - **完全一致で比較する**: 出力の安定性（NFR-01）を守るため、部分一致は避ける。
 - **1 テスト 1 事実**: 落ちたテスト名だけで壊れた仕様が分かるようにする。

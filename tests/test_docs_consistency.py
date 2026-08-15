@@ -23,12 +23,15 @@ _TASK_ROW = re.compile(r"^\|\s*(T-\d+)\s*\|", re.MULTILINE)
 def markdown_files() -> list[Path]:
     """検査対象のドキュメント。
 
-    `tests/assets/` の下は変換結果を固定したゴールデンファイルであって
-    ドキュメントではない。中の相対パスは Markdown の出力例なので検査しない。
+    変換結果を固定したゴールデンファイルはドキュメントではない。
+    中の相対パスは Markdown の出力例なので検査しない。
+    一方 `tests/corpus/` の README や症状レポートは人間が書くので検査対象。
     """
-    assets = TESTS / "assets"
+    generated = (TESTS / "assets", TESTS / "corpus" / "passing" / "expected")
     return sorted(
-        p for p in ROOT.rglob("*.md") if ".venv" not in p.parts and not p.is_relative_to(assets)
+        p
+        for p in ROOT.rglob("*.md")
+        if ".venv" not in p.parts and not any(p.is_relative_to(g) for g in generated)
     )
 
 

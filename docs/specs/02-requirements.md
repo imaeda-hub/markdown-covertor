@@ -55,7 +55,7 @@ Markdown への写像規則の詳細は [05-変換ルール](05-conversion-rules
 | FR-304 | ✅ | テキストを持たない PDF ページがあるとき、スキャン画像の可能性を警告する | `test_empty_pdf_reports_no_text` |
 | FR-305 | ✅ | 利用者が指定したとき、警告を出力 Markdown の末尾にコメントとして残せる | `test_notices_are_optional` |
 | FR-306 | ✅ | 図形・グラフ・SmartArt を検出したとき、その存在を警告として報告する | `test_powerpoint_reports_chart_and_image_it_cannot_render` |
-| FR-309 | ✅ | PDF を変換したとき、表・段組みを復元できない旨をあらかじめ伝える | `test_real_world_document_is_frozen` |
+| FR-309 | ✅ | PDF を変換したとき、表・段組みを復元できない旨をあらかじめ伝える | `test_pdf_warns_about_structure_it_cannot_restore` |
 | FR-307 | ✅ | 標準出力へ変換するとき、画像の置き場所がないため書き出しを止めて警告する | `test_stdout_cannot_hold_images_so_extraction_is_disabled` |
 | FR-308 | ✅ | 表題を本文から省いたとき、その旨を警告として報告する | `test_title_style_is_not_a_heading` |
 
@@ -79,7 +79,9 @@ Markdown への写像規則の詳細は [05-変換ルール](05-conversion-rules
 |---|---|---|---|
 | NFR-01 | ✅ | 同じ入力からは常に同じ出力になる（Git 差分が意味を持つ） | `test_conversion_is_deterministic` |
 | NFR-07 | ✅ | 本物の Office ファイルの変換結果を固定し、退行を検出する | `test_real_file_conversion_is_frozen` |
-| NFR-08 | ✅ | 第三者が作った実世界の資料（図・グラフ・スキャン）でも退行を検出する | `test_real_world_document_is_frozen` |
+| NFR-08 | ✅ | 実資料を通ったもの／通らなかったものに分けて残し、退行と再挑戦の両方に使う | `test_passing_document_output_is_frozen` |
+| NFR-09 | ✅ | 通らなかった資料でも説明できない例外で落ちず、症状の説明が添えられている | `test_failing_document_fails_gracefully` |
+| NFR-10 | ✅ | 通らなかった資料の**壊れ方**も固定し、静かな悪化を検出する | `test_failing_document_output_is_frozen` |
 | NFR-02 | ✅ | コア機能は Python 標準ライブラリのみで動く（PDF のみ追加依存） | `pyproject.toml` の `dependencies` が空 |
 | NFR-03 | ✅ | 既定の動作でネットワーク通信を行わない | 外部通信コードを持たない |
 | NFR-04 | ✅ | 壊れたファイルでもスタックトレースを出さず、原因の分かる日本語メッセージを返す | `test_broken_file_returns_error_code` |
