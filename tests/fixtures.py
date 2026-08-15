@@ -37,6 +37,16 @@ DEFAULT_STYLES = f"""<w:styles {W}>
   <w:style w:type="paragraph" w:styleId="Title"><w:name w:val="Title"/></w:style>
   <w:style w:type="paragraph" w:styleId="Subtitle"><w:name w:val="Subtitle"/></w:style>
   <w:style w:type="paragraph" w:styleId="Quote"><w:name w:val="Quote"/></w:style>
+  <!-- Word の「箇条書き」スタイルは、段落ではなくスタイル側に番号定義を持つ -->
+  <w:style w:type="paragraph" w:styleId="ListBullet"><w:name w:val="List Bullet"/>
+    <w:pPr><w:numPr><w:numId w:val="1"/></w:numPr></w:pPr></w:style>
+  <w:style w:type="paragraph" w:styleId="ListBullet2"><w:name w:val="List Bullet 2"/>
+    <w:pPr><w:numPr><w:numId w:val="1"/></w:numPr></w:pPr></w:style>
+  <w:style w:type="paragraph" w:styleId="ListNumber"><w:name w:val="List Number"/>
+    <w:pPr><w:numPr><w:numId w:val="2"/></w:numPr></w:pPr></w:style>
+  <!-- 日本語版 Word は styleId に連番を振る。末尾の 5 を階層と誤読しないこと -->
+  <w:style w:type="paragraph" w:styleId="a5"><w:name w:val="List Bullet 2"/>
+    <w:pPr><w:numPr><w:numId w:val="1"/></w:numPr></w:pPr></w:style>
 </w:styles>"""
 
 DEFAULT_NUMBERING = f"""<w:numbering {W}>
@@ -77,12 +87,24 @@ def docx(
     return write_zip(path, parts)
 
 
-def para(text: str, *, style: str | None = None, num: tuple[str, int] | None = None) -> str:
+def para(
+    text: str,
+    *,
+    style: str | None = None,
+    num: tuple[str | None, int | None] | None = None,
+) -> str:
+    """段落を組み立てる。num は (numId, ilvl)。片方だけ指定すると実ファイル同様その要素だけ書く。"""
     props = ""
     if style:
         props += f'<w:pStyle w:val="{style}"/>'
     if num:
-        props += f'<w:numPr><w:ilvl w:val="{num[1]}"/><w:numId w:val="{num[0]}"/></w:numPr>'
+        num_id, ilvl = num
+        inner = ""
+        if ilvl is not None:
+            inner += f'<w:ilvl w:val="{ilvl}"/>'
+        if num_id is not None:
+            inner += f'<w:numId w:val="{num_id}"/>'
+        props += f"<w:numPr>{inner}</w:numPr>"
     ppr = f"<w:pPr>{props}</w:pPr>" if props else ""
     return f"<w:p>{ppr}{run(text)}</w:p>"
 

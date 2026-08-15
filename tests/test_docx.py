@@ -83,6 +83,42 @@ def test_numbered_list(tmp_path):
     assert convert(tmp_path, body).markdown == "1. 最初\n2. 次\n"
 
 
+def test_list_style_without_paragraph_numbering(tmp_path):
+    """Word の「箇条書き」スタイルは段落に番号設定を持たず、スタイル側に持つ。
+
+    実ファイルで見つかった取りこぼし（T-01）。段落だけ見ているとリストにならない。
+    """
+    body = (
+        fx.para("一つ目", style="ListBullet")
+        + fx.para("入れ子", style="ListBullet2")
+        + fx.para("二つ目", style="ListBullet")
+    )
+    assert convert(tmp_path, body).markdown == "- 一つ目\n  - 入れ子\n- 二つ目\n"
+
+
+def test_number_list_style_without_paragraph_numbering(tmp_path):
+    body = fx.para("最初", style="ListNumber") + fx.para("次", style="ListNumber")
+    assert convert(tmp_path, body).markdown == "1. 最初\n2. 次\n"
+
+
+def test_list_depth_comes_from_style_name_not_style_id(tmp_path):
+    """日本語版 Word の styleId（a5 など）の数字を階層と誤読しないこと。"""
+    body = fx.para("一つ目", style="ListBullet") + fx.para("入れ子", style="a5")
+    assert convert(tmp_path, body).markdown == "- 一つ目\n  - 入れ子\n"
+
+
+def test_paragraph_level_overrides_style_numbering(tmp_path):
+    """段落が階層だけを上書きする形（w:ilvl のみ）でも入れ子が保たれること。"""
+    body = fx.para("親", style="ListBullet") + fx.para("子", style="ListBullet", num=(None, 1))
+    assert convert(tmp_path, body).markdown == "- 親\n  - 子\n"
+
+
+def test_numbering_removed_by_num_id_zero(tmp_path):
+    """numId="0" は「番号を外す」指定なので、箇条書きにしないこと。"""
+    body = fx.para("ただの段落", style="ListBullet", num=("0", 0))
+    assert convert(tmp_path, body).markdown == "ただの段落\n"
+
+
 def test_list_ends_when_normal_paragraph_appears(tmp_path):
     body = fx.para("項目", num=("1", 0)) + fx.para("段落")
     assert convert(tmp_path, body).markdown == "- 項目\n\n段落\n"

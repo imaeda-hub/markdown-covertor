@@ -35,6 +35,8 @@
 | `src/mdconv/converters/*.py` | 形式ごとの解析 | **高** |
 | `tests/fixtures.py` | テスト用の最小 Office ファイル生成 | 中 |
 | `tests/test_docs_consistency.py` | 仕様書の健全性チェック（リンク・ID・テスト参照） | 低 |
+| `tests/assets/` | 実ファイルの回帰テスト資産（本物の Office ファイルと、固定した出力） | 低 |
+| `tools/build_fixtures.py` | `tests/assets/` の入力ファイルを作り直す開発用スクリプト | 低 |
 
 ファイル構成を変えたら、**この表も一緒に直す**（ループ手順書 ⑦.5）。
 
@@ -92,7 +94,7 @@ Document
 │   ├─ Image(path, alt)
 │   ├─ Callout(label, blocks)   # 引用・発表者ノート
 │   └─ Divider()
-├─ assets: [Asset(name, data)]  # 抽出した画像
+├─ assets: [Asset(path, data)]  # 抽出した画像（path は本文の参照と同じ相対パス）
 └─ notices: [Notice(message, severity)]
 ```
 
@@ -124,7 +126,19 @@ Document
 
 ## 7. テスト方針
 
-- **外部ファイルに依存しない**: `tests/fixtures.py` が最小の OOXML を組み立てる。
-  「この XML がこの Markdown になる」がテストを読むだけで分かる。
+テストは**二層**になっている。片方だけでは守れないものがある。
+
+| 層 | 何を確かめるか | 置き場所 |
+|---|---|---|
+| 手書き XML | 「この XML をこう読む」という仕様。テストを読めば挙動が分かる | `tests/fixtures.py` + 各 `test_*.py` |
+| 実ファイル | 本物の Office が吐く構造で壊れないこと。**想定外を検出する** | `tests/assets/` + `test_real_files.py` |
+
+手書き XML は自分の想定しか書けないので、想定外は見つけられない。
+実際、実ファイル層を入れた初日に「スタイル側に番号定義がある箇条書き」の
+取りこぼし（FR-216）が見つかった。逆に実ファイルだけでは、
+どの XML 構造が原因で壊れたのかが分からない。**両方いる。**
+
 - **完全一致で比較する**: 出力の安定性（NFR-01）を守るため、部分一致は避ける。
 - **1 テスト 1 事実**: 落ちたテスト名だけで壊れた仕様が分かるようにする。
+- 実ファイルの期待値は `UPDATE_GOLDEN=1 pytest` で更新できるが、
+  **差分を必ず目で確認する**（更新は「仕様が変わった」という宣言になる）。

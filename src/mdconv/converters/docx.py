@@ -42,6 +42,7 @@ class _DocxParser:
         self.extract_images = extract_images
         self.rels = pkg.rels(DOCUMENT_PART)
         self.style_roles = _style_roles(pkg)
+        self.style_numbering = _style_numbering(pkg)
         self.numbering = _numbering(pkg)
         self._title_used = False
         # 一括変換で別々の文書の image1.png が衝突しないよう、文書名でフォルダを分ける
@@ -107,11 +108,11 @@ class _DocxParser:
             blocks.append(Heading(level=role, spans=spans))
             return blocks
 
-        num = _num_ref(p)
-        if num is not None:
-            num_id, ilvl = num
+        listing = self._list_ref(p, style)
+        if listing is not None:
+            num_id, ilvl, level = listing
             ordered = self.numbering.get((num_id, ilvl), False)
-            blocks.append(ListItem(spans=spans, level=ilvl, ordered=ordered))
+            blocks.append(ListItem(spans=spans, level=level, ordered=ordered))
             return blocks
 
         if style in ("Quote", "IntenseQuote"):
@@ -120,6 +121,31 @@ class _DocxParser:
 
         blocks.append(Paragraph(spans=spans))
         return blocks
+
+    def _list_ref(self, p: ET.Element, style: str | None) -> tuple[str, int, int] | None:
+        """段落が箇条書きなら (numId, ilvl, 表示上の階層) を返す。
+
+        箇条書きの指定は 2 か所に分かれて置かれることがある。
+          * 段落の w:numPr … 番号定義と階層。ただし**階層だけ**書かれることも多い
+          * スタイルの w:numPr … Word の「箇条書き」スタイルはこちらに番号定義を持つ
+        どちらか片方だけを見ると、リストの取りこぼしや入れ子の潰れが起きる。
+        """
+        para = _num_ref(p)
+        from_style = self.style_numbering.get(style or "") if style else None
+        if para is None and from_style is None:
+            return None
+
+        para_num_id, para_ilvl = para if para else (None, None)
+        num_id = para_num_id or (from_style[0] if from_style else None)
+        if num_id is None or num_id == "0":
+            # numId="0" は「このスタイルの番号を外す」という指定
+            return None
+
+        if para_ilvl is not None:
+            return num_id, para_ilvl, para_ilvl
+        if from_style is not None:
+            return num_id, from_style[1], from_style[2]
+        return num_id, 0, 0
 
     def _spans(self, parent: ET.Element) -> list[Span]:
         spans: list[Span] = []
@@ -223,6 +249,47 @@ def _style_roles(pkg: OoxmlPackage) -> dict[str, int | str]:
     return roles
 
 
+def _style_numbering(pkg: OoxmlPackage) -> dict[str, tuple[str, int, int]]:
+    """styleId -> (numId, ilvl, 表示上の階層) の対応表。
+
+    「箇条書き」「段落番号」スタイルは、段落ではなくスタイル定義に w:numPr を持つ。
+    階層はスタイル名の末尾の数字で表される（List Bullet 2 = 2 階層目）ので、
+    ilvl ではなくそちらから読む。
+    """
+    out: dict[str, tuple[str, int, int]] = {}
+    root = pkg.xml_or_none("word/styles.xml")
+    if root is None:
+        return out
+    for style in root.findall(q("w", "style")):
+        style_id = attr(style, "w", "styleId")
+        if not style_id:
+            continue  # 空キーにすると pStyle を持たない段落すべてに一致してしまう
+        ppr = style.find(q("w", "pPr"))
+        numpr = ppr.find(q("w", "numPr")) if ppr is not None else None
+        if numpr is None:
+            continue
+        num_el = numpr.find(q("w", "numId"))
+        num_id = attr(num_el, "w", "val") if num_el is not None else None
+        if num_id is None or num_id == "0":
+            continue
+        ilvl_el = numpr.find(q("w", "ilvl"))
+        ilvl = int(attr(ilvl_el, "w", "val") or 0) if ilvl_el is not None else 0
+        name_el = style.find(q("w", "name"))
+        name = (attr(name_el, "w", "val") or "") if name_el is not None else ""
+        out[style_id] = (num_id, ilvl, max(ilvl, _style_depth(name)))
+    return out
+
+
+def _style_depth(name: str) -> int:
+    """「List Bullet 2」のようなスタイル名から表示上の階層を読む（2 なら 1 段目の入れ子）。
+
+    styleId ではなく w:name を見るのは、日本語版 Word が styleId に `a5` のような
+    連番を振るため。styleId の末尾の数字を階層と誤読すると、深く字下げされてしまう。
+    """
+    m = re.search(r"(\d+)\s*$", name)
+    return max(int(m.group(1)) - 1, 0) if m else 0
+
+
 def _is_named(style_id: str, name: str, *candidates: str) -> bool:
     return any(label.lower() in candidates for label in (style_id, name))
 
@@ -286,7 +353,12 @@ def _style_id(p: ET.Element) -> str | None:
     return attr(style, "w", "val") if style is not None else None
 
 
-def _num_ref(p: ET.Element) -> tuple[str, int] | None:
+def _num_ref(p: ET.Element) -> tuple[str | None, int | None] | None:
+    """段落の w:numPr を (numId, ilvl) で返す。
+
+    numId だけ・ilvl だけという書かれ方が実ファイルには両方あるので、
+    「無い」を None として区別し、足りない方はスタイル側から補えるようにする。
+    """
     ppr = p.find(q("w", "pPr"))
     if ppr is None:
         return None
@@ -296,9 +368,7 @@ def _num_ref(p: ET.Element) -> tuple[str, int] | None:
     num_el = numpr.find(q("w", "numId"))
     ilvl_el = numpr.find(q("w", "ilvl"))
     num_id = attr(num_el, "w", "val") if num_el is not None else None
-    if num_id is None:
-        return None
-    ilvl = int(attr(ilvl_el, "w", "val") or 0) if ilvl_el is not None else 0
+    ilvl = int(attr(ilvl_el, "w", "val") or 0) if ilvl_el is not None else None
     return num_id, ilvl
 
 

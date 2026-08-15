@@ -40,6 +40,7 @@ Markdown への写像規則の詳細は [05-変換ルール](05-conversion-rules
 | FR-213 | 📋 | 表の結合セルは、値を複製せず結合の事実が分かる形で出力される | 未 |
 | FR-214 | ✅ | Excel の見出し行は自動判定する（1 行目固定にしない） | `test_first_row_containing_a_number_is_not_a_header` |
 | FR-215 | ✅ | Word の表題は本文の見出しにせず、文書のタイトルとして保持する | `test_title_style_is_not_a_heading` |
+| FR-216 | ✅ | 段落ではなくスタイル側に番号定義がある箇条書きも、リストとして復元する | `test_list_style_without_paragraph_numbering` |
 
 ## 3. 失われる情報の扱い（FR-3xx）
 
@@ -74,7 +75,8 @@ Markdown への写像規則の詳細は [05-変換ルール](05-conversion-rules
 
 | ID | 状態 | 要件 | 測り方 |
 |---|---|---|---|
-| NFR-01 | ✅ | 同じ入力からは常に同じ出力になる（Git 差分が意味を持つ） | テストが完全一致で比較 |
+| NFR-01 | ✅ | 同じ入力からは常に同じ出力になる（Git 差分が意味を持つ） | `test_conversion_is_deterministic` |
+| NFR-07 | ✅ | 本物の Office ファイルの変換結果を固定し、退行を検出する | `test_real_file_conversion_is_frozen` |
 | NFR-02 | ✅ | コア機能は Python 標準ライブラリのみで動く（PDF のみ追加依存） | `pyproject.toml` の `dependencies` が空 |
 | NFR-03 | ✅ | 既定の動作でネットワーク通信を行わない | 外部通信コードを持たない |
 | NFR-04 | ✅ | 壊れたファイルでもスタックトレースを出さず、原因の分かる日本語メッセージを返す | `test_broken_file_returns_error_code` |

@@ -21,7 +21,15 @@ _TASK_ROW = re.compile(r"^\|\s*(T-\d+)\s*\|", re.MULTILINE)
 
 
 def markdown_files() -> list[Path]:
-    return sorted(p for p in ROOT.rglob("*.md") if ".venv" not in p.parts)
+    """検査対象のドキュメント。
+
+    `tests/assets/` の下は変換結果を固定したゴールデンファイルであって
+    ドキュメントではない。中の相対パスは Markdown の出力例なので検査しない。
+    """
+    assets = TESTS / "assets"
+    return sorted(
+        p for p in ROOT.rglob("*.md") if ".venv" not in p.parts and not p.is_relative_to(assets)
+    )
 
 
 def test_no_broken_relative_links():
