@@ -34,6 +34,9 @@
 | `src/mdconv/ooxml.py` | Office 形式共通の ZIP/XML 読み取り | 低 |
 | `src/mdconv/converters/*.py` | 形式ごとの解析 | **高** |
 | `tests/fixtures.py` | テスト用の最小 Office ファイル生成 | 中 |
+| `tests/test_docs_consistency.py` | 仕様書の健全性チェック（リンク・ID・テスト参照） | 低 |
+
+ファイル構成を変えたら、**この表も一緒に直す**（ループ手順書 ⑦.5）。
 
 ## 3. 設計判断とその理由
 
