@@ -11,7 +11,7 @@ from __future__ import annotations
 import re
 
 from ..errors import BrokenDocumentError, MissingDependencyError
-from ..model import Divider, Document, Heading, ListBlock, ListItem, Paragraph, Span
+from ..model import Divider, Document, Heading, ListBlock, ListItem, Notice, Paragraph, Span
 
 # 和文の中黒などは後ろに空白を置かないことが多いので、記号の種類で条件を分ける
 _BULLET = re.compile(r"^\s*(?:[•・●○◦▪▫]\s*|[*\-–—]\s+)(?P<text>\S.*)$")
@@ -61,6 +61,17 @@ def convert(path: str, *, page_dividers: bool = True, page_headings: bool = Fals
         if page_headings:
             doc.add(Heading(level=2, spans=[Span(f"ページ {index}")]))
         doc.blocks.extend(blocks_from_text(text))
+
+    if doc.blocks:
+        # PDF は「これは表」という情報を持たないため、表や段組みは必ず崩れる。
+        # 崩れた結果は一見ふつうの段落に見えてしまうので、限界の方を先に伝える
+        doc.notices.append(
+            Notice(
+                "PDF の表・段組みは復元できません。文が繋がって見える箇所は、"
+                "元が表や 2 段組みの可能性があります",
+                "info",
+            )
+        )
 
     if empty_pages:
         doc.warn(

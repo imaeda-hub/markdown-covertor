@@ -46,6 +46,31 @@ def test_table_on_slide(tmp_path):
     assert "| A | 1 |" in result.markdown
 
 
+def test_graphic_kind_is_named_from_its_namespace():
+    """出力できない図表の種類を uri から言い当てられること。
+
+    手元の実資料に SmartArt が無いので、ここだけは合成した uri で確かめる。
+    """
+    from xml.etree import ElementTree as ET
+
+    from mdconv.converters.pptx import _graphic_kind
+
+    def frame(uri: str) -> ET.Element:
+        return ET.fromstring(
+            f'<graphicFrame xmlns:a="{fx.A.split(chr(34))[1]}">'
+            f'<a:graphic><a:graphicData uri="{uri}"/></a:graphic></graphicFrame>'
+        )
+
+    assert (
+        _graphic_kind(frame("http://schemas.openxmlformats.org/drawingml/2006/chart")) == "グラフ"
+    )
+    assert (
+        _graphic_kind(frame("http://schemas.openxmlformats.org/drawingml/2006/diagram"))
+        == "SmartArt"
+    )
+    assert _graphic_kind(frame("http://example.com/unknown")) == "図表"
+
+
 def test_untitled_slide_falls_back_to_number(tmp_path):
     result = convert(tmp_path, [{"title": ""}, {"title": ""}])
     assert "# スライド 1" in result.markdown

@@ -41,6 +41,7 @@ Markdown への写像規則の詳細は [05-変換ルール](05-conversion-rules
 | FR-214 | ✅ | Excel の見出し行は自動判定する（1 行目固定にしない） | `test_first_row_containing_a_number_is_not_a_header` |
 | FR-215 | ✅ | Word の表題は本文の見出しにせず、文書のタイトルとして保持する | `test_title_style_is_not_a_heading` |
 | FR-216 | ✅ | 段落ではなくスタイル側に番号定義がある箇条書きも、リストとして復元する | `test_list_style_without_paragraph_numbering` |
+| FR-217 | ✅ | グループ化された図形の中の文字も本文として拾う | `test_powerpoint_recovers_text_inside_grouped_shapes` |
 
 ## 3. 失われる情報の扱い（FR-3xx）
 
@@ -53,7 +54,8 @@ Markdown への写像規則の詳細は [05-変換ルール](05-conversion-rules
 | FR-303 | ✅ | 非表示シートは既定で除外し、除外した事実を警告として報告する | `test_hidden_sheet_is_excluded_by_default` |
 | FR-304 | ✅ | テキストを持たない PDF ページがあるとき、スキャン画像の可能性を警告する | `test_empty_pdf_reports_no_text` |
 | FR-305 | ✅ | 利用者が指定したとき、警告を出力 Markdown の末尾にコメントとして残せる | `test_notices_are_optional` |
-| FR-306 | 📋 | 図形・グラフ・SmartArt を検出したとき、その存在を警告として報告する | 未 |
+| FR-306 | ✅ | 図形・グラフ・SmartArt を検出したとき、その存在を警告として報告する | `test_powerpoint_reports_chart_and_image_it_cannot_render` |
+| FR-309 | ✅ | PDF を変換したとき、表・段組みを復元できない旨をあらかじめ伝える | `test_real_world_document_is_frozen` |
 | FR-307 | ✅ | 標準出力へ変換するとき、画像の置き場所がないため書き出しを止めて警告する | `test_stdout_cannot_hold_images_so_extraction_is_disabled` |
 | FR-308 | ✅ | 表題を本文から省いたとき、その旨を警告として報告する | `test_title_style_is_not_a_heading` |
 
@@ -77,10 +79,11 @@ Markdown への写像規則の詳細は [05-変換ルール](05-conversion-rules
 |---|---|---|---|
 | NFR-01 | ✅ | 同じ入力からは常に同じ出力になる（Git 差分が意味を持つ） | `test_conversion_is_deterministic` |
 | NFR-07 | ✅ | 本物の Office ファイルの変換結果を固定し、退行を検出する | `test_real_file_conversion_is_frozen` |
+| NFR-08 | ✅ | 第三者が作った実世界の資料（図・グラフ・スキャン）でも退行を検出する | `test_real_world_document_is_frozen` |
 | NFR-02 | ✅ | コア機能は Python 標準ライブラリのみで動く（PDF のみ追加依存） | `pyproject.toml` の `dependencies` が空 |
 | NFR-03 | ✅ | 既定の動作でネットワーク通信を行わない | 外部通信コードを持たない |
 | NFR-04 | ✅ | 壊れたファイルでもスタックトレースを出さず、原因の分かる日本語メッセージを返す | `test_broken_file_returns_error_code` |
-| NFR-05 | 📋 | 10MB の .docx を 3 秒以内に変換する | ベンチマーク未整備 |
+| NFR-05 | 📋 | 10MB の .docx を 3 秒以内に変換する | ベンチマーク未整備（T-10） |
 | NFR-06 | 📋 | 巨大な .xlsx でメモリを使い切らない（ストリーミング処理） | 未 |
 
 ## 6. 用語

@@ -60,7 +60,20 @@ def convert(path: str, *, include_hidden: bool = False, max_rows: int | None = N
                 doc.warn(f"シート「{name}」を {max_rows} 行で打ち切りました（全 {len(grid)} 行）")
                 grid = grid[:max_rows]
             doc.add(_table(grid, header=header))
+        _report_graphics(pkg, doc)
     return doc
+
+
+def _report_graphics(pkg: OoxmlPackage, doc: Document) -> None:
+    """グラフ・図形の存在を伝える。セルの値しか読まないので、これらは必ず落ちる。"""
+    names = pkg.zip.namelist()
+    # グラフと画像は別々に数える。グラフがある本に画像も入っていることは普通にある
+    charts = sum(1 for n in names if n.startswith("xl/charts/chart"))
+    if charts:
+        doc.warn(f"グラフを {charts} 個出力していません（Markdown に表現がありません）")
+    images = sum(1 for n in names if n.startswith("xl/media/"))
+    if images:
+        doc.warn(f"画像を {images} 個出力していません")
 
 
 def _table(grid: list[list[_Cell]], *, header: bool) -> Table:

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import re
+from collections import Counter
 from pathlib import Path
 from xml.etree import ElementTree as ET
 
@@ -56,6 +57,7 @@ class _DocxParser:
             self.doc.warn("本文 (w:body) が見つかりませんでした")
             return
         self._blocks(body, self.doc.blocks)
+        self._report_graphics(body)
 
     def _blocks(self, parent: ET.Element, out: list) -> None:
         """w:p / w:tbl の並びを IR ブロック列に変換する。連続する箇条書きは 1 つに束ねる。"""
@@ -205,6 +207,25 @@ class _DocxParser:
                 self.doc.warn(f"画像を出力しませんでした ({name})")
         return out
 
+    def _report_graphics(self, body: ET.Element) -> None:
+        """グラフ・SmartArt・テキストボックスなど、出力できない要素の存在を伝える。
+
+        画像と違って書き出す先がないので、せめて「あった」ことだけは残す。
+        黙って消すのが最悪（01-product.md の優先順位 1）。
+
+        本文だけでなく表の中も対象にするため、段落単位ではなく本文全体を一度に走査する。
+        """
+        found: Counter[str] = Counter()
+        for element in _walk_without_fallback(body):
+            if element.tag == q("a", "graphicData"):
+                kind = _graphic_kind(element.get("uri") or "")
+                if kind:
+                    found[kind] += 1
+            elif element.tag == q("w", "txbxContent"):
+                found["テキストボックス"] += 1
+        for kind, count in sorted(found.items()):
+            self.doc.warn(f"{kind}を {count} 個出力していません（Markdown に表現がありません）")
+
     # -- 表 ---------------------------------------------------------------
     def _table(self, tbl: ET.Element) -> Table:
         rows: list[list[list[Span]]] = []
@@ -278,6 +299,31 @@ def _style_numbering(pkg: OoxmlPackage) -> dict[str, tuple[str, int, int]]:
         name = (attr(name_el, "w", "val") or "") if name_el is not None else ""
         out[style_id] = (num_id, ilvl, max(ilvl, _style_depth(name)))
     return out
+
+
+MC = "http://schemas.openxmlformats.org/markup-compatibility/2006"
+
+
+def _walk_without_fallback(root: ET.Element):
+    """要素を辿る。ただし mc:Fallback の中には入らない。
+
+    Word は 1 つの図表を mc:Choice（新しい表現）と mc:Fallback（古い表現）の
+    両方で書くことがある。素直に走査すると同じ図表を 2 回数えてしまう。
+    """
+    for child in root:
+        if child.tag == f"{{{MC}}}Fallback":
+            continue
+        yield child
+        yield from _walk_without_fallback(child)
+
+
+def _graphic_kind(uri: str) -> str | None:
+    """graphicData の uri から図表の種類を判別する。画像と表は別扱いなので None。"""
+    if "chart" in uri:
+        return "グラフ"
+    if "diagram" in uri or "smartArt" in uri:
+        return "SmartArt"
+    return None
 
 
 def _style_depth(name: str) -> int:

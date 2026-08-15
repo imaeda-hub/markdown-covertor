@@ -6,6 +6,8 @@
 
 from __future__ import annotations
 
+from collections import Counter
+from dataclasses import dataclass, field
 from xml.etree import ElementTree as ET
 
 from ..model import (
@@ -63,24 +65,73 @@ def _slide(
 
     title: list[Span] | None = None
     body: list = []
-    for shape in tree:
-        if shape.tag == q("p", "sp"):
-            if title is None and _is_title(shape):
-                title = _shape_title(shape)
-                continue
-            body.extend(_shape_blocks(shape))
-        elif shape.tag == q("p", "graphicFrame"):
-            table = _table(shape)
-            if table is not None:
-                body.append(table)
+    state = _SlideState(doc=doc, number=number)
+    _collect_shapes(tree, body, state)
+    title = state.title
 
     doc.add(Heading(level=1, spans=title or [Span(f"スライド {number}")]))
     doc.blocks.extend(body)
+    state.report()
 
     if include_notes:
         notes = _notes(pkg, part)
         if notes:
             doc.add(Callout(label="発表者ノート", blocks=[Paragraph(spans=[Span(notes)])]))
+
+
+@dataclass
+class _SlideState:
+    """1 枚のスライドを走査する間の持ち物。
+
+    グループ図形は入れ子になるので、タイトルと「落とした要素」の集計を
+    再帰の間ずっと持ち回る必要がある。
+    """
+
+    doc: Document
+    number: int
+    title: list[Span] | None = None
+    dropped: Counter = field(default_factory=Counter)
+
+    def drop(self, kind: str) -> None:
+        self.dropped[kind] += 1
+
+    def report(self) -> None:
+        """落とした要素をまとめて警告する。黙って消さないことが最優先（01-product.md）。"""
+        for kind, count in sorted(self.dropped.items()):
+            self.doc.warn(f"スライド {self.number}: {kind} を {count} 個出力していません")
+
+
+def _collect_shapes(parent: ET.Element, out: list, state: _SlideState) -> None:
+    """図形ツリーを再帰的に辿る。グループ化された図形の中にも本文がある。"""
+    for shape in parent:
+        if shape.tag == q("p", "sp"):
+            if state.title is None and _is_title(shape):
+                state.title = _shape_title(shape)
+                continue
+            out.extend(_shape_blocks(shape))
+        elif shape.tag == q("p", "grpSp"):
+            _collect_shapes(shape, out, state)
+        elif shape.tag == q("p", "graphicFrame"):
+            table = _table(shape)
+            if table is not None:
+                out.append(table)
+            else:
+                state.drop(_graphic_kind(shape))
+        elif shape.tag == q("p", "pic"):
+            state.drop("画像")
+
+
+def _graphic_kind(frame: ET.Element) -> str:
+    """表以外の graphicFrame が何なのかを、埋め込まれた名前空間から判別する。"""
+    data = frame.find(f"{q('a', 'graphic')}/{q('a', 'graphicData')}")
+    uri = (data.get("uri") or "") if data is not None else ""
+    if "chart" in uri:
+        return "グラフ"
+    if "diagram" in uri or "smartArt" in uri:
+        return "SmartArt"
+    if "ole" in uri.lower():
+        return "埋め込みオブジェクト"
+    return "図表"
 
 
 def _placeholder_type(shape: ET.Element) -> str | None:
