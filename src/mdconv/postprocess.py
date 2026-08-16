@@ -219,6 +219,60 @@ def nest_lists(markdown: str, items: list[tuple[int, str]]) -> tuple[str, bool]:
     return "\n".join(lines), True
 
 
+_SLIDE_COMMENT = re.compile(r"^<!--.*-->$")
+_NOTES_HEADING = "### Notes:"
+
+
+def add_pptx_bullets(markdown: str, items: list[tuple[int, str]]) -> tuple[str, bool]:
+    """PowerPoint の本文行に、記号と階層を付け直す。
+
+    markitdown は PowerPoint の箇条書きを記号も階層も付けない平文で出す（劣化、T-32）。
+    docx の `nest_lists()` と違い、行に元から記号が付いていないため、
+    見出し・スライド区切りのコメント・表・発表者ノートを除いた「本文候補行」を数え、
+    `items`（`ooxml.pptx_list_levels`）と**件数・中身の両方が一致するときだけ**適用する。
+    中身の比較は前後の空白を無視するだけの厳密一致（`nest_lists()` の
+    `_normalize_list_text` のような Markdown 装飾の除去はしない）。markitdown は
+    mammoth と違って pptx の段落を装飾なしの素のテキストで出すため、緩める必要がない。
+
+    戻り値は (本文, 適用したかどうか)。
+    """
+    lines = markdown.splitlines()
+    candidates = _pptx_body_line_indices(lines)
+    if not items or len(candidates) != len(items):
+        return markdown, False
+
+    pairs = list(zip(candidates, items, strict=True))
+    for index, (_, text) in pairs:
+        if lines[index].strip() != text.strip():
+            return markdown, False
+
+    for index, (level, _) in pairs:
+        marker = _BULLET_CYCLE[level % len(_BULLET_CYCLE)]
+        lines[index] = f"{'  ' * level}{marker} {lines[index]}"
+    return "\n".join(lines), True
+
+
+def _pptx_body_line_indices(lines: list[str]) -> list[int]:
+    """箇条書きの記号を付け得る「本文候補行」の位置を返す。
+
+    見出し（表題）・`<!-- Slide number: N -->`・表・空行・発表者ノートの中身は対象外。
+    """
+    out: list[int] = []
+    in_notes = False
+    for i, line in enumerate(lines):
+        stripped = line.strip()
+        if _SLIDE_COMMENT.match(stripped):
+            in_notes = False
+            continue
+        if stripped == _NOTES_HEADING:
+            in_notes = True
+            continue
+        if in_notes or not stripped or stripped.startswith(("#", "|")):
+            continue
+        out.append(i)
+    return out
+
+
 _MD_DECORATION = re.compile(r"[*_`\\]")
 
 

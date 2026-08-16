@@ -1,8 +1,10 @@
 """Office Open XML (docx / xlsx / pptx) 共通のユーティリティ。
 
 docx・xlsx・pptx はいずれも「ZIP の中に XML が入っているだけ」なので、
-標準ライブラリの zipfile と ElementTree で読める。外部依存を持たない方針
-（docs/specs/03-design.md「依存方針」）の土台がこのモジュール。
+標準ライブラリの zipfile と ElementTree で読める。検査・補正が見るのは
+markitdown が出力に反映しない元ファイルの構造情報なので、python-docx 等の
+上位ライブラリは要らない（プロジェクト全体は v0.2 で markitdown に依存する。
+NFR-02 参照。このモジュール限定の話）。
 """
 
 from __future__ import annotations
@@ -181,3 +183,103 @@ def _style_list_level(style_id: str | None) -> int | None:
         return None
     digits = m.group(2)
     return int(digits) - 1 if digits else 0
+
+
+# 表題・字幕・ヘッダ/フッタ・日付・スライド番号などの「本文ではない」プレースホルダー。
+# markitdown はプレースホルダーの種類を区別せず shape.text をすべて出力するため、
+# ここで除外し損なうと（例: フッタ文字列）本文の候補行と件数・中身がたまたま噛み合い、
+# 無関係な文字列を箇条書きとして書き換えてしまう（レビューで実際に再現された）。
+_NON_BODY_PLACEHOLDER_TYPES = {
+    "title",
+    "ctrTitle",
+    "subTitle",
+    "ftr",
+    "hdr",
+    "sldNum",
+    "dt",
+    "pic",
+    "chart",
+    "tbl",
+    "clipArt",
+    "dgm",
+    "media",
+    "sldImg",
+}
+
+
+def pptx_list_levels(path: str) -> list[tuple[int, str]]:
+    """PowerPoint の本文プレースホルダーの段落を出現順に辿り、(階層, 段落の文字列) の一覧を返す。
+
+    markitdown は PowerPoint の箇条書きを記号も階層も付けない平文で出す（劣化）。
+    表題・字幕・ヘッダ/フッタ・日付・スライド番号等（`_NON_BODY_PLACEHOLDER_TYPES`）以外の
+    プレースホルダーを本文とみなし、段落の `a:pPr/@lvl`（省略時は階層 0）から階層を復元する。
+    表は markitdown 側で GFM の表になるため対象外（`p:sp` 図形のみを見る＝
+    `p:graphicFrame` の表は拾わない）。
+
+    プレースホルダーでないテキストボックスの箇条書きは検出しない（対応づけの手がかりが
+    無い）。markitdown 側では平文になるが、この関数が空を返すため
+    `api.py` は「本文プレースホルダーが無い」と「対応づけに失敗した」を区別できず、
+    テキストボックスのみの箇条書きには警告も出ない（既知の制約。03-design.md 4.6）。
+
+    文字列も一緒に返すのは、`postprocess.add_pptx_bullets()` が Markdown 側の行と
+    **中身が一致するときだけ**対応づけるため（docx と同じ設計、03-design.md 4.5）。
+    """
+    with OoxmlPackage(path) as pkg:
+        out: list[tuple[int, str]] = []
+        for slide_path in _pptx_slide_order(pkg):
+            root = pkg.xml(slide_path)
+            for shape in root.iter(q("p", "sp")):
+                if not _is_body_placeholder(shape):
+                    continue
+                body = shape.find(q("p", "txBody"))
+                if body is None:
+                    continue
+                for p in body.findall(q("a", "p")):
+                    text = text_of(p)
+                    if text.strip():
+                        out.append((_pptx_paragraph_level(p), text))
+        return out
+
+
+def _pptx_slide_order(pkg: OoxmlPackage) -> list[str]:
+    """スライドの表示順（`p:sldIdLst`）をパートのパスで返す。
+
+    ZIP 内のファイル名の並び（slide1, slide2, …）は表示順と一致するとは限らない
+    （スライドの並べ替え）ため、`presentation.xml` のリレーションを辿って解決する。
+    """
+    presentation = pkg.xml_or_none("ppt/presentation.xml")
+    if presentation is None:
+        return []
+    id_list = presentation.find(q("p", "sldIdLst"))
+    if id_list is None:
+        return []
+    rels = pkg.rels("ppt/presentation.xml")
+    order: list[str] = []
+    for sld_id in id_list.findall(q("p", "sldId")):
+        rid = attr(sld_id, "r", "id")
+        target = rels.get(rid) if rid else None
+        if target:
+            order.append(target)
+    return order
+
+
+def _is_body_placeholder(shape: ET.Element) -> bool:
+    """本文プレースホルダーかどうか。
+
+    表題・字幕・ヘッダ/フッタ・日付・スライド番号等（`_NON_BODY_PLACEHOLDER_TYPES`）と、
+    テキストボックス等（プレースホルダーでない図形）は除く。`type` 省略はレイアウト側の
+    種類を引き継ぐが、`idx` を持つ標準的な内容プレースホルダーは省略されることが多いため
+    「本文」として扱う（表題プレースホルダーは実務上ほぼ必ず `type="title"` を明示するため、
+    この既定値でも誤って表題を本文扱いすることは少ない）。
+    """
+    ph = shape.find(f"{q('p', 'nvSpPr')}/{q('p', 'nvPr')}/{q('p', 'ph')}")
+    if ph is None:
+        return False
+    return (ph.get("type") or "body") not in _NON_BODY_PLACEHOLDER_TYPES
+
+
+def _pptx_paragraph_level(p: ET.Element) -> int:
+    ppr = p.find(q("a", "pPr"))
+    if ppr is None:
+        return 0
+    return int(ppr.get("lvl") or "0")

@@ -214,6 +214,80 @@ def test_images_can_be_turned_off(tmp_path):
     assert "![" not in result.markdown
 
 
+# -- PowerPoint -------------------------------------------------------------
+
+
+def test_pptx_bullets_get_symbols_and_levels(tmp_path):
+    """markitdown は PowerPoint の箇条書きを記号も階層も付けない平文で出す（劣化、T-32）。
+    元ファイルのプレースホルダーの階層（`a:pPr/@lvl`）から記号と字下げを復元する。
+    """
+    path = fx.pptx(
+        tmp_path / "資料.pptx",
+        [{"title": "見出し", "bullets": [(0, "親 1"), (1, "子 1"), (1, "子 2"), (0, "親 2")]}],
+    )
+    markdown = convert_file(path).markdown
+    assert "# 見出し" in markdown
+    assert "* 親 1\n  + 子 1\n  + 子 2\n* 親 2" in markdown
+
+
+def test_pptx_footer_placeholder_is_not_bulleted(tmp_path):
+    """フッタ・日付・スライド番号などのプレースホルダーは本文ではない。
+
+    markitdown はプレースホルダーの種類を区別せず、フッタの文字列も
+    本文と同じ平文で出す。誤って本文の候補行に数えると、件数が
+    たまたま噛み合ったときに無関係な文字列を箇条書きに書き換えてしまう
+    （レビューで実際に再現された不具合）。フッタを本文から除外した結果、
+    今度は「本文の候補行」の件数がフッタの分だけ本物の箇条書きより多くなり、
+    件数が合わないため**本物の箇条書きにも記号を付けられない**（安全側に倒す）。
+    このときは黙って終わらせず、警告で報告する。
+    """
+    footer = fx.pptx_placeholder_shape(99, "ftr", "Company Confidential")
+    path = fx.pptx(
+        tmp_path / "資料.pptx",
+        [{"title": "見出し", "bullets": [(0, "本文 1"), (0, "本文 2")]}],
+        extra_shape=footer,
+    )
+    result = convert_file(path)
+    assert "Company Confidential" in result.markdown
+    for marker in ("* ", "+ ", "- "):
+        assert f"{marker}Company Confidential" not in result.markdown
+    assert any("箇条書きの記号を復元できませんでした" in n.message for n in result.notices)
+
+
+def test_pptx_list_levels_excludes_non_body_placeholders(tmp_path):
+    """字幕・日付・スライド番号などのプレースホルダーは `pptx_list_levels()` の対象外。
+
+    表題だけでなく、これらも「本文」ではないため箇条書きの対応づけに混ぜない
+    （フッタと同じ理由。個別に確認する）。
+    """
+    from mdconv.ooxml import pptx_list_levels
+
+    shapes = "".join(
+        fx.pptx_placeholder_shape(90 + i, ph_type, text)
+        for i, (ph_type, text) in enumerate(
+            [("subTitle", "副題です"), ("dt", "2026/08/16"), ("sldNum", "1")]
+        )
+    )
+    path = fx.pptx(
+        tmp_path / "資料.pptx",
+        [{"title": "見出し", "bullets": [(0, "本文 1")]}],
+        extra_shape=shapes,
+    )
+    assert pptx_list_levels(str(path)) == [(0, "本文 1")]
+
+
+def test_pptx_bullets_do_not_touch_notes(tmp_path):
+    """発表者ノートは本文プレースホルダーではないので、記号を付けない。"""
+    path = fx.pptx(
+        tmp_path / "資料.pptx",
+        [{"title": "見出し", "bullets": [(0, "項目")], "notes": "発表メモです"}],
+    )
+    markdown = convert_file(path).markdown
+    assert "* 項目" in markdown
+    assert "発表メモです" in markdown
+    assert "* 発表メモです" not in markdown
+
+
 # -- 出力オプション -------------------------------------------------------
 
 

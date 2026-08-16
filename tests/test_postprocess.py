@@ -203,6 +203,57 @@ def test_nest_lists_does_nothing_without_items():
     assert md == text
 
 
+# -- PowerPoint の箇条書き（T-32） ------------------------------------------
+
+
+def test_add_pptx_bullets_adds_symbols_and_indentation():
+    text = "<!-- Slide number: 1 -->\n# 見出し\n親 1\n子 1\n子 2\n親 2"
+    md, applied = pp.add_pptx_bullets(text, [(0, "親 1"), (1, "子 1"), (1, "子 2"), (0, "親 2")])
+    assert applied
+    assert "* 親 1\n  + 子 1\n  + 子 2\n* 親 2" in md
+    assert "# 見出し" in md  # 表題は候補行から除かれ、書き換わらない
+
+
+def test_add_pptx_bullets_skips_slide_comments_and_notes():
+    text = "<!-- Slide number: 1 -->\n# 見出し\n項目\n\n### Notes:\nメモです"
+    md, applied = pp.add_pptx_bullets(text, [(0, "項目")])
+    assert applied
+    assert "* 項目" in md
+    assert "メモです" in md and "* メモです" not in md
+
+
+def test_add_pptx_bullets_does_nothing_when_counts_do_not_match():
+    text = "項目 1\n項目 2"
+    md, applied = pp.add_pptx_bullets(text, [(0, "項目 1")])
+    assert not applied
+    assert md == text
+
+
+def test_add_pptx_bullets_does_nothing_when_content_does_not_match():
+    text = "項目 1\n無関係な本文"
+    md, applied = pp.add_pptx_bullets(text, [(0, "項目 1"), (0, "項目 2")])
+    assert not applied
+    assert md == text
+
+
+def test_add_pptx_bullets_does_nothing_without_items():
+    text = "項目 1\n項目 2"
+    md, applied = pp.add_pptx_bullets(text, [])
+    assert not applied
+    assert md == text
+
+
+def test_add_pptx_bullets_uses_strict_comparison_unlike_nest_lists():
+    """pptx は mammoth と違い Markdown 装飾を付けずに平文で出すため、
+    `nest_lists()` のように `*`/`_` などの装飾を無視して比較しない（レビュー指摘）。
+    装飾らしき文字が元と違う行は「別物」として扱い、何もしない。
+    """
+    text = "Item * note"
+    md, applied = pp.add_pptx_bullets(text, [(0, "Item  note")])
+    assert not applied
+    assert md == text
+
+
 # -- 見出し・体裁 ---------------------------------------------------------
 
 

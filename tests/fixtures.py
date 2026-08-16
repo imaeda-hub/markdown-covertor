@@ -99,8 +99,13 @@ def xlsx(
     return path
 
 
-def pptx(path: Path, slides: list[dict]) -> Path:
-    """python-pptx でスライドを作る。slides は {"title":…, "bullets":[(level, text)]}。"""
+def pptx(path: Path, slides: list[dict], *, extra_shape: str | None = None) -> Path:
+    """python-pptx でスライドを作る。slides は {"title":…, "bullets":[(level, text)]}。
+
+    extra_shape を渡すと、1 枚目のスライドの図形ツリー（`p:spTree`）の末尾に
+    そのまま差し込む。python-pptx では作れないプレースホルダー種別
+    （フッタ・日付・スライド番号など）を検査対象にしたいときに使う。
+    """
     from pptx import Presentation
 
     deck = Presentation()
@@ -118,7 +123,29 @@ def pptx(path: Path, slides: list[dict]) -> Path:
         if slide.get("notes"):
             added.notes_slide.notes_text_frame.text = slide["notes"]
     deck.save(path)
+
+    if extra_shape:
+        parts = _read_zip(path.read_bytes())
+        parts["ppt/slides/slide1.xml"] = _insert_into_sptree(
+            parts["ppt/slides/slide1.xml"], extra_shape
+        )
+        _write_zip(path, parts)
     return path
+
+
+def pptx_placeholder_shape(shape_id: int, ph_type: str, text: str) -> str:
+    """`p:ph` の `type` を指定できるプレースホルダー図形の XML（`pptx(extra_shape=...)` 用）。
+
+    python-pptx は標準の型（フッタ・日付・スライド番号）を高レベル API から作れないため、
+    生の XML で組み立てる。名前空間 (`a:`/`p:`) は差し込み先の `<p:sld>` が宣言済み。
+    """
+    return (
+        f'<p:sp><p:nvSpPr><p:cNvPr id="{shape_id}" name="Placeholder {shape_id}"/>'
+        '<p:cNvSpPr><a:spLocks noGrp="1"/></p:cNvSpPr>'
+        f'<p:nvPr><p:ph type="{ph_type}"/></p:nvPr></p:nvSpPr><p:spPr/>'
+        f"<p:txBody><a:bodyPr/><a:lstStyle/><a:p><a:r><a:t>{text}</a:t></a:r></a:p></p:txBody>"
+        "</p:sp>"
+    )
 
 
 # --------------------------------------------------------------------------
@@ -149,6 +176,14 @@ def _insert_into_body(document_xml: bytes, body: str) -> bytes:
     marker = "<w:body>"
     index = text.index(marker) + len(marker)
     return (text[:index] + body + text[index:]).encode("utf-8")
+
+
+def _insert_into_sptree(slide_xml: bytes, shape: str) -> bytes:
+    """`</p:spTree>` の直前に図形の XML を差し込む（スライドの図形として追加する）。"""
+    text = slide_xml.decode("utf-8")
+    marker = "</p:spTree>"
+    index = text.index(marker)
+    return (text[:index] + shape + text[index:]).encode("utf-8")
 
 
 def _add_relationships(rels_xml: bytes, mapping: dict[str, str]) -> bytes:

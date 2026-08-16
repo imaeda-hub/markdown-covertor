@@ -21,7 +21,7 @@ from pathlib import Path
 
 from . import engine, media, postprocess
 from .inspection import inspect
-from .ooxml import docx_list_levels
+from .ooxml import docx_list_levels, pptx_list_levels
 from .registry import detect
 from .types import Asset, Notice
 
@@ -115,6 +115,13 @@ def _apply(markdown, found, opts: ConvertOptions, source: Path):
         if not nested and any(level > 0 for level, _ in items):
             # 元ファイルに入れ子があるのに直せなかった。黙って崩れたままにしない
             found.warn("箇条書きの入れ子を復元できませんでした（本文との対応が取れないため）")
+
+    if found.format == "pptx":
+        items = pptx_list_levels(str(source))
+        markdown, bulleted = postprocess.add_pptx_bullets(markdown, items)
+        if not bulleted and items:
+            # 本文プレースホルダーがあるのに記号を付けられなかった。黙って平文のままにしない
+            found.warn("箇条書きの記号を復元できませんでした（本文との対応が取れないため）")
 
     assets: list[Asset] = []
     if opts.extract_images:
