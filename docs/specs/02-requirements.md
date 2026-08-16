@@ -37,7 +37,7 @@
 | FR-219 | ✅ | Excel の空セルが `NaN` として出るのを、空欄に戻す | `test_nan_cells_become_empty` |
 | FR-220 | ✅ | PDF の罫線がない表も、表として復元される（v0.2 で改善） | `test_borderless_table_pdf_is_restored_as_a_table` |
 | FR-202 | ✅ | Word の箇条書きの入れ子の深さを保つ（元ファイルのスタイル名から復元） | `test_docx_nested_bullets_keep_their_level` |
-| FR-223 | 📋 | Word の番号付きリストは、入れ子にしたとき番号も振り直す | 現状は字下げのみ。番号は元のまま。T-33 |
+| FR-223 | ✅ | Word の番号付きリストは、入れ子にしたとき番号も振り直す | `test_docx_nested_numbered_list_renumbers_by_level` |
 | FR-222 | 📋 | PowerPoint の箇条書きに記号と階層を付ける | **T-25 とは別問題**（記号自体が無い）。T-32 |
 | FR-221 | ➖ | Word の引用スタイルを `>` にする | **対応しない**（Q-07 決定）。読めれば実害小さいと判断 |
 | FR-215 | ➖ | Word の表題を文書のタイトルとして扱う | **対応しない**（Q-07 決定）。読めれば実害小さいと判断 |

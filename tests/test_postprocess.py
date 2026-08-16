@@ -118,11 +118,53 @@ def test_nest_lists_cycles_bullet_markers_every_three_levels():
     assert md == "* a\n  + b\n    - c\n      * d"
 
 
-def test_nest_lists_keeps_the_original_marker_for_numbered_lists():
-    text = "1. a\n2. b"
+def test_nest_lists_renumbers_nested_numbered_lists():
+    """入れ子にした番号付きリストは、階層ごとに 1 から振り直す（T-33）。
+
+    markitdown は元の numId ごとに新しいリストとして出力するため、
+    素の入力の番号は元の値のままあてにならない（ここでは意図的にでたらめな値にしている）。
+    """
+    text = "5. a\n9. b"
     md, applied = pp.nest_lists(text, [(0, "a"), (1, "b")])
     assert applied
-    assert md == "1. a\n  2. b"
+    assert md == "1. a\n  1. b"
+
+
+def test_nest_lists_resumes_the_parent_numbering_after_a_nested_list():
+    text = "1. a\n1. b\n2. c\n1. d"
+    md, applied = pp.nest_lists(text, [(0, "a"), (1, "b"), (1, "c"), (0, "d")])
+    assert applied
+    assert md == "1. a\n  1. b\n  2. c\n2. d"
+
+
+def test_nest_lists_restarts_numbering_for_a_new_sublist_under_a_later_sibling():
+    text = "1. a\n1. b\n1. c\n1. d"
+    md, applied = pp.nest_lists(text, [(0, "a"), (1, "b"), (0, "c"), (1, "d")])
+    assert applied
+    assert md == "1. a\n  1. b\n2. c\n  1. d"
+
+
+def test_nest_lists_does_not_bleed_numbers_across_two_unrelated_lists():
+    """レビューで発覚: 本文を挟んだ 2 つの独立した番号付きリストが連番になってしまう。
+
+    mammoth は本文が挟まると別のリスト（別の <ol>）として出力し、そこで
+    すでに "1." から振り直している。行が連続していない（間に本文がある）ときは
+    続きの番号として数えず、新しいリストとして扱う。
+    """
+    text = "5. a\n9. b\n\n本文\n\n5. c\n9. d"
+    md, applied = pp.nest_lists(text, [(0, "a"), (0, "b"), (0, "c"), (0, "d")])
+    assert applied
+    assert md == "1. a\n2. b\n\n本文\n\n1. c\n2. d"
+
+
+def test_nest_lists_restarts_a_numbered_sublist_under_each_bullet_sibling():
+    """箇条書きの下にぶら下がる番号付きサブリストは、親が変わるたびに 1 から数える。"""
+    text = "* a\n\n1. a1\n1. a2\n\n* b\n\n1. b1\n1. b2"
+    md, applied = pp.nest_lists(
+        text, [(0, "a"), (1, "a1"), (1, "a2"), (0, "b"), (1, "b1"), (1, "b2")]
+    )
+    assert applied
+    assert md == "* a\n\n  1. a1\n  2. a2\n\n* b\n\n  1. b1\n  2. b2"
 
 
 def test_nest_lists_ignores_markdown_decoration_when_matching_text():

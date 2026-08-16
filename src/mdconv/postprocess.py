@@ -194,11 +194,27 @@ def nest_lists(markdown: str, items: list[tuple[int, str]]) -> tuple[str, bool]:
         if _normalize_list_text(match.group("text")) != _normalize_list_text(text):
             return markdown, False
 
+    numbering: dict[int, int] = {}
+    prev_index: int | None = None
     for index, (level, _) in pairs:
+        if prev_index is not None and index != prev_index + 1:
+            # 行が連続していない = 間に本文や別のリストが挟まっている。
+            # mammoth はそこで別のリストとして出力しているので、続きの番号ではなく
+            # 新しいリストとして数え直す（そうしないと無関係な 2 つのリストが
+            # 1 つに数珠つなぎになってしまう）。
+            numbering = {}
+        prev_index = index
         match = _LIST_ITEM.match(lines[index])
         marker = match.group("marker")
         if marker in _BULLET_CYCLE:
             marker = _BULLET_CYCLE[level % len(_BULLET_CYCLE)]
+        else:
+            # markitdown は元の numId ごとに新しいリストとして番号を振るため、
+            # 階層をまたぐと数字があてにならない。階層ごとに 1 から数え直す
+            # （深い階層に潜っていた分の続きは、浅い階層へ戻った時点で捨てる）。
+            numbering = {lv: n for lv, n in numbering.items() if lv <= level}
+            numbering[level] = numbering.get(level, 0) + 1
+            marker = f"{numbering[level]}."
         lines[index] = f"{'  ' * level}{marker} {match.group('text')}"
     return "\n".join(lines), True
 

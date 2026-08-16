@@ -42,6 +42,35 @@ def test_docx_nested_bullets_keep_their_level(tmp_path):
     assert "* 親 1\n  + 子 1\n* 親 2" in markdown
 
 
+def test_docx_nested_numbered_list_renumbers_by_level(tmp_path):
+    """「リスト番号 2」のような組み込みスタイルは、字下げは復元できても
+    番号はそれぞれの numId のまま（1. から）残ってしまう（T-33）。
+    階層ごとに 1 から数え直し、親の続きの番号も正しく引き継ぐ。
+    """
+    body = (
+        fx.para("親 1", style="ListNumber")
+        + fx.para("子 1", style="ListNumber2")
+        + fx.para("子 2", style="ListNumber2")
+        + fx.para("親 2", style="ListNumber")
+    )
+    markdown = convert(tmp_path, body).markdown
+    assert "1. 親 1\n  1. 子 1\n  2. 子 2\n2. 親 2" in markdown
+
+
+def test_docx_two_separate_numbered_lists_each_restart_at_one(tmp_path):
+    """本文を挟んだ 2 つの独立したリストは、それぞれ 1 から始まる（T-33 のレビューで発覚）。"""
+    body = (
+        fx.para("Item 1", style="ListNumber")
+        + fx.para("Item 2", style="ListNumber")
+        + fx.para("本文です。")
+        + fx.para("Other 1", style="ListNumber")
+        + fx.para("Other 2", style="ListNumber")
+    )
+    markdown = convert(tmp_path, body).markdown
+    assert "1. Item 1\n2. Item 2" in markdown
+    assert "1. Other 1\n2. Other 2" in markdown
+
+
 def test_docx_numid_override_does_not_corrupt_unrelated_text(tmp_path):
     """`numId="0"`（番号の明示的な解除）を箇条書きと誤って数えると、
     たまたま `- ` で始まる本文行と行数だけが噛み合い、無関係な文章が
