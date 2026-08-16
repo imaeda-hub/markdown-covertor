@@ -56,7 +56,7 @@
 | `src/mdconv/api.py` | 公開 API。上の 4 つを組み立てる | 低 |
 | `src/mdconv/registry.py` | 形式判定 | 低 |
 | `src/mdconv/types.py` | Notice / Asset / Inspection | 低 |
-| `src/mdconv/ooxml.py` | ZIP + XML の読み取り（検査用） | 低 |
+| `src/mdconv/ooxml.py` | ZIP + XML の読み取り（検査・補正用） | 低 |
 | `src/mdconv/cli.py` | コマンドライン | 中 |
 | `tests/fixtures.py` | テスト用 Office ファイルの生成 | 中 |
 | `tests/corpus/` | 実資料の検体（`inbox` / `passing` / `failing`） | **高** |
@@ -93,6 +93,19 @@ markitdown は区別なく出力するため、**そのままでは情報漏洩�
 * Word の表が「空ヘッダ + 全行データ」になる → 1 行目を見出しに繰り上げる
 * Excel の空セルが `NaN` になる（pandas 由来）→ 空に戻す
 * 空シートが `|` だけの壊れた表になる → 落とす
+
+### 4.5 Word の箇条書きの入れ子が潰れる → 元ファイルのスタイル名から復元する
+
+「箇条書きレベル 2」のような Word の組み込みスタイルは、**階層ごとに別の numId を持つ**。
+同じ numId の中で `w:ilvl` が増える段落は mammoth が正しく入れ子にできるが、
+別の numId は無関係な別リストに見えるため、そのままだと全部が同じ階層に潰れる。
+`ooxml.docx_list_levels()` がスタイル名の末尾の数字（`ListBullet2` → 階層 1）と
+`w:ilvl` の両方から元の階層を復元し、`postprocess.nest_lists()` が出現順に対応づけて
+字下げをやり直す。**行数が合うだけでは対応づけの根拠として弱い**
+（例: `numId="0"` で番号を明示的に解除した段落を誤って数えると、
+たまたま `- ` で始まる本文行と行数だけ噛み合うことがある）ため、
+各行の中身が元の段落の文字列と一致するときだけ適用する。
+番号付きリストは字下げだけ直し、**番号そのものは振り直さない**（T-33）。
 
 ## 5. エラーの方針
 

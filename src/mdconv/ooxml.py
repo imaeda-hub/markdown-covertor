@@ -7,6 +7,7 @@ docx・xlsx・pptx はいずれも「ZIP の中に XML が入っているだけ�
 
 from __future__ import annotations
 
+import re
 import zipfile
 from xml.etree import ElementTree as ET
 
@@ -112,3 +113,71 @@ def _resolve(base_dir: str, target: str) -> str:
 def text_of(el: ET.Element | None) -> str:
     """要素配下のテキストをすべて連結する。"""
     return "".join(el.itertext()) if el is not None else ""
+
+
+# 「List Bullet 2」のような Word 組み込みスタイル。末尾の数字がそのまま階層を表す
+# （styleId は UI の言語に関わらずこの英語表記で固定）。
+_LIST_STYLE = re.compile(r"^(ListBullet|ListNumber)(\d*)$")
+
+
+def docx_list_levels(path: str) -> list[tuple[int, str]]:
+    """Word 文書の箇条書き段落を出現順に辿り、(階層, 段落の文字列) の一覧を返す。
+
+    mammoth は同じ numId の中で `w:ilvl` が増える段落は正しく入れ子にできるが、
+    「List Bullet 2」のように**階層ごとに別の numId を持つ組み込みスタイル**は
+    無関係な別リストとして扱われ、フラットに出力される（劣化）。
+    ここでは組み込みスタイル名の末尾の数字と `w:ilvl` の両方から階層を復元する。
+    表の中の段落は markitdown 側で箇条書きにならないため対象外にする。
+
+    文字列も一緒に返すのは、`postprocess.nest_lists()` が Markdown 側の行と
+    **中身が一致するときだけ**対応づけるため。行数が偶然一致しただけの
+    誤った対応づけ（例: `numId="0"` でリストを解除した段落と、たまたま
+    `- ` で始まる本文が数だけ噛み合う）を防ぐ。
+    """
+    with OoxmlPackage(path) as pkg:
+        document_root = pkg.xml("word/document.xml")  # <w:document> 直下。<w:body> はこの子
+        out: list[tuple[int, str]] = []
+        for p in _body_paragraphs(document_root):
+            level = _paragraph_list_level(p)
+            if level is not None:
+                out.append((level, text_of(p)))
+        return out
+
+
+def _body_paragraphs(root: ET.Element):
+    """本文の段落を出現順に辿る。表の中身（GFM の表に化けるので箇条書きにならない）は除く。"""
+    for child in root:
+        if child.tag == q("w", "tbl"):
+            continue
+        if child.tag == q("w", "p"):
+            yield child
+        else:
+            yield from _body_paragraphs(child)
+
+
+def _paragraph_list_level(p: ET.Element) -> int | None:
+    ppr = p.find(q("w", "pPr"))
+    if ppr is None:
+        return None
+    pstyle = ppr.find(q("w", "pStyle"))
+    style_level = _style_list_level(attr(pstyle, "w", "val")) if pstyle is not None else None
+    numpr = ppr.find(q("w", "numPr"))
+    if numpr is not None:
+        num_id = numpr.find(q("w", "numId"))
+        if num_id is not None and attr(num_id, "w", "val") == "0":
+            return None  # numId=0 は「番号なし」への明示的な解除。箇条書きではない
+        ilvl = numpr.find(q("w", "ilvl"))
+        if ilvl is not None:
+            return int(attr(ilvl, "w", "val", "0"))
+        return style_level if style_level is not None else 0
+    return style_level
+
+
+def _style_list_level(style_id: str | None) -> int | None:
+    if not style_id:
+        return None
+    m = _LIST_STYLE.match(style_id)
+    if not m:
+        return None
+    digits = m.group(2)
+    return int(digits) - 1 if digits else 0

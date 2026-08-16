@@ -101,6 +101,66 @@ def test_text_containing_nan_outside_a_table_is_untouched():
     assert pp.clean_tables("値は NaN でした") == "値は NaN でした"
 
 
+# -- 箇条書きの入れ子 ------------------------------------------------------
+
+
+def test_nest_lists_reindents_bullets_by_level():
+    text = "* a\n* b\n* c"
+    md, applied = pp.nest_lists(text, [(0, "a"), (1, "b"), (0, "c")])
+    assert applied
+    assert md == "* a\n  + b\n* c"
+
+
+def test_nest_lists_cycles_bullet_markers_every_three_levels():
+    text = "* a\n* b\n* c\n* d"
+    md, applied = pp.nest_lists(text, [(0, "a"), (1, "b"), (2, "c"), (3, "d")])
+    assert applied
+    assert md == "* a\n  + b\n    - c\n      * d"
+
+
+def test_nest_lists_keeps_the_original_marker_for_numbered_lists():
+    text = "1. a\n2. b"
+    md, applied = pp.nest_lists(text, [(0, "a"), (1, "b")])
+    assert applied
+    assert md == "1. a\n  2. b"
+
+
+def test_nest_lists_ignores_markdown_decoration_when_matching_text():
+    """太字にした段落は `**a**` になるが、中身は元の `a` と同じとみなす。"""
+    text = "* **a**\n* b"
+    md, applied = pp.nest_lists(text, [(0, "a"), (1, "b")])
+    assert applied
+    assert md == "* **a**\n  + b"
+
+
+def test_nest_lists_does_nothing_when_counts_do_not_match():
+    """対応が取れないときは、誤った入れ替えで順序を壊すより何もしない方が安全。"""
+    text = "* a\n* b"
+    md, applied = pp.nest_lists(text, [(0, "a")])
+    assert not applied
+    assert md == text
+
+
+def test_nest_lists_does_nothing_when_content_does_not_match():
+    """行数がたまたま同じでも、中身が対応していなければ誤った入れ替えになる。
+
+    たとえば元ファイルで番号を解除した段落（numId=0）が誤って数えられ、
+    たまたま `- ` で始まる本文行と行数だけ噛み合うことがある。
+    その場合は数だけでなく中身も見て、対応が取れないと判断する。
+    """
+    text = "* a\n- 本文中のハイフン行"
+    md, applied = pp.nest_lists(text, [(0, "a"), (0, "番号を解除した段落")])
+    assert not applied
+    assert md == text
+
+
+def test_nest_lists_does_nothing_without_items():
+    text = "* a\n* b"
+    md, applied = pp.nest_lists(text, [])
+    assert not applied
+    assert md == text
+
+
 # -- 見出し・体裁 ---------------------------------------------------------
 
 

@@ -24,6 +24,8 @@ _HEADING = re.compile(r"^(#{1,6})\s+(.*)$")
 _EMPTY_HEADER_ROW = re.compile(r"^\|(?:\s*\|)+\s*$")
 _SEPARATOR_ROW = re.compile(r"^\|(?:\s*:?-{2,}:?\s*\|)+\s*$")
 _NAN_CELL = re.compile(r"\|\s*NaN\s*\|")
+_LIST_ITEM = re.compile(r"^(?P<indent>[ ]*)(?P<marker>[*+-]|\d+\.)(?P<sep>[ ]+)(?P<text>.*)$")
+_BULLET_CYCLE = "*+-"  # mammoth 自身が入れ子で使う記号の順序に合わせる
 
 
 def place_images(
@@ -167,6 +169,46 @@ def promote_empty_table_header(markdown: str) -> str:
         out.append(header)
         i += 1
     return "\n".join(out)
+
+
+def nest_lists(markdown: str, items: list[tuple[int, str]]) -> tuple[str, bool]:
+    """箇条書きの階層を、元ファイルから復元した `items` の通りに付け直す。
+
+    `items` は本文中の箇条書き段落を (階層, 段落の文字列) で出現順に並べたもの
+    （`ooxml.docx_list_levels`）。行数が一致するだけでは対応づけの根拠として弱い
+    （例: 番号を解除した段落と、たまたま `- ` で始まる本文の数が偶然噛み合う）ので、
+    **各行の中身も元の段落の文字列と一致するときだけ**適用する。
+    一致しないときは何もしない（誤った入れ替えで順序を壊すより安全）。
+
+    戻り値は (本文, 適用したかどうか)。適用できなかったことは呼び出し側が
+    警告として報告できるようにする（黙って直らないのを防ぐ）。
+    """
+    lines = markdown.splitlines()
+    indices = [i for i, line in enumerate(lines) if _LIST_ITEM.match(line)]
+    if not items or len(indices) != len(items):
+        return markdown, False
+
+    pairs = list(zip(indices, items, strict=True))
+    for index, (_, text) in pairs:
+        match = _LIST_ITEM.match(lines[index])
+        if _normalize_list_text(match.group("text")) != _normalize_list_text(text):
+            return markdown, False
+
+    for index, (level, _) in pairs:
+        match = _LIST_ITEM.match(lines[index])
+        marker = match.group("marker")
+        if marker in _BULLET_CYCLE:
+            marker = _BULLET_CYCLE[level % len(_BULLET_CYCLE)]
+        lines[index] = f"{'  ' * level}{marker} {match.group('text')}"
+    return "\n".join(lines), True
+
+
+_MD_DECORATION = re.compile(r"[*_`\\]")
+
+
+def _normalize_list_text(text: str) -> str:
+    """太字などの Markdown 装飾やエスケープの差を無視して比較するための正規化。"""
+    return _MD_DECORATION.sub("", text).strip()
 
 
 def shift_headings(markdown: str, offset: int) -> str:

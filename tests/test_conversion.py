@@ -28,6 +28,38 @@ def test_docx_headings_and_text(tmp_path):
     assert "本文です。" in markdown
 
 
+def test_docx_nested_bullets_keep_their_level(tmp_path):
+    """「箇条書きレベル 2」のような組み込みスタイルは、階層ごとに別の numId を持つため
+    mammoth からは無関係な別リストに見え、そのままだと全部が同じ階層に潰れる（T-25）。
+    元ファイルのスタイル名から階層を復元し、字下げをやり直す。
+    """
+    body = (
+        fx.para("親 1", style="ListBullet")
+        + fx.para("子 1", style="ListBullet2")
+        + fx.para("親 2", style="ListBullet")
+    )
+    markdown = convert(tmp_path, body).markdown
+    assert "* 親 1\n  + 子 1\n* 親 2" in markdown
+
+
+def test_docx_numid_override_does_not_corrupt_unrelated_text(tmp_path):
+    """`numId="0"`（番号の明示的な解除）を箇条書きと誤って数えると、
+    たまたま `- ` で始まる本文行と行数だけが噛み合い、無関係な文章が
+    箇条書きに書き換えられてしまう（レビューで見つかった対応づけの穴）。
+    行数だけでなく中身も見て対応づけることで、この文章を書き換えない。
+    """
+    body = (
+        '<w:p><w:pPr><w:numPr><w:ilvl w:val="0"/><w:numId w:val="1"/></w:numPr></w:pPr>'
+        "<w:r><w:t>本物の項目</w:t></w:r></w:p>"
+        '<w:p><w:pPr><w:numPr><w:numId w:val="0"/></w:numPr></w:pPr>'
+        "<w:r><w:t>番号を解除した段落</w:t></w:r></w:p>"
+        "<w:p><w:r><w:t>- 本文中のハイフン行</w:t></w:r></w:p>"
+    )
+    markdown = convert(tmp_path, body).markdown
+    assert "- 本文中のハイフン行" in markdown
+    assert "番号を解除した段落" in markdown
+
+
 def test_result_carries_format_and_source(tmp_path):
     result = convert(tmp_path, fx.para("本文"))
     assert result.format == "docx"
