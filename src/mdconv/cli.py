@@ -168,6 +168,10 @@ def _destinations(targets: list[Path], output: Path, multiple: bool) -> dict[Pat
     `資料.docx` と `資料.xlsx` のように**拡張子違いで stem が同じ**ファイルは、
     素直に `{stem}.md` にすると出力先が衝突し、片方が黙って消える（T-23）。
     衝突する組だけ、元の拡張子を残した `{名前}.md`（例: `資料.docx.md`）にして避ける。
+
+    `--recursive` で `a/報告.docx` と `b/報告.docx` のように**フォルダ違いで
+    名前も拡張子も同じ**ファイルは、拡張子を残しても `報告.docx.md` のまま
+    衝突する（T-34）。この場合だけ、確実に分けるため連番を付ける。
     """
     if not multiple and output.suffix != "" and not output.is_dir():
         return {targets[0]: output}
@@ -175,8 +179,16 @@ def _destinations(targets: list[Path], output: Path, multiple: bool) -> dict[Pat
     stems = [_destination(t, output, True) for t in targets]
     collisions = {d for d in stems if stems.count(d) > 1}
     result: dict[Path, Path] = {}
+    used: set[Path] = set()
     for target, plain in zip(targets, stems, strict=True):
-        result[target] = output / f"{target.name}.md" if plain in collisions else plain
+        candidate = output / f"{target.name}.md" if plain in collisions else plain
+        if candidate in used:
+            n = 2
+            while output / f"{target.name}-{n}.md" in used:
+                n += 1
+            candidate = output / f"{target.name}-{n}.md"
+        used.add(candidate)
+        result[target] = candidate
     return result
 
 

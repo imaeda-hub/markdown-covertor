@@ -62,6 +62,23 @@ def test_same_stem_different_format_do_not_collide(tmp_path):
     assert "Excel の中身" in (out / "資料.xlsx.md").read_text(encoding="utf-8")
 
 
+def test_same_name_same_format_in_different_folders_do_not_collide(tmp_path):
+    """`--recursive` で `a/報告.docx` と `b/報告.docx` を一括変換しても衝突しないこと（T-34）。"""
+    src = tmp_path / "src"
+    (src / "a").mkdir(parents=True)
+    (src / "b").mkdir(parents=True)
+    fx.docx(src / "a" / "報告.docx", fx.para("A フォルダの中身"))
+    fx.docx(src / "b" / "報告.docx", fx.para("B フォルダの中身"))
+
+    out = tmp_path / "out"
+    assert main([str(src), "-o", str(out), "--recursive"]) == 0
+    names = sorted(p.name for p in out.glob("*.md"))
+    assert len(names) == 2, f"出力が 2 件にならず片方が消えている: {names}"
+    contents = {p.read_text(encoding="utf-8") for p in out.glob("*.md")}
+    assert any("A フォルダの中身" in c for c in contents)
+    assert any("B フォルダの中身" in c for c in contents)
+
+
 def test_multiple_inputs_without_output_is_a_usage_error(tmp_path, capsys):
     a = fx.docx(tmp_path / "a.docx", fx.para("A"))
     b = fx.docx(tmp_path / "b.docx", fx.para("B"))

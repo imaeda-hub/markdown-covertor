@@ -73,7 +73,7 @@
 | FR-405 | ✅ | 複数ファイルを標準出力に混ぜようとしたとき、使い方の誤りとして拒否する | `test_multiple_inputs_without_output_is_a_usage_error` |
 | FR-406 | ✅ | 一部のファイルが失敗しても、残りの変換は続行し、終了コードで失敗を伝える | `test_broken_file_returns_error_code` |
 | FR-408 | ✅ | 一括変換で、文書ごとに画像の置き場所を分ける | `test_images_of_different_documents_do_not_collide` |
-| FR-409 | ✅ | 同名で拡張子違いの資料を一括変換しても、出力ファイル名が衝突しない | `test_same_stem_different_format_do_not_collide` |
+| FR-409 | ✅ | 同名の資料（拡張子違い・`--recursive` でのフォルダ違いを含む）を一括変換しても、出力ファイル名が衝突しない | `test_same_name_same_format_in_different_folders_do_not_collide` |
 | FR-407 | 📋 | 変換の進捗をファイル数つきで表示する（大量変換時） | 未 |
 
 **終了コード**: `0` 成功 ／ `1` 変換失敗あり ／ `2` 使い方の誤り
