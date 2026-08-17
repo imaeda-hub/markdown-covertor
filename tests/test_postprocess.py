@@ -97,6 +97,26 @@ def test_degenerate_table_row_is_dropped():
     assert pp.clean_tables("## 空シート\n|\n|  |") == "## 空シート\n|  |"
 
 
+def test_number_padding_is_stripped_to_match_the_original_value():
+    text = "| A |\n| --- |\n| 0.60 |\n| 0.65 |"
+    assert pp.fix_number_padding(text) == "| A |\n| --- |\n| 0.6 |\n| 0.65 |"
+
+
+def test_number_padding_strips_a_trailing_dot_for_integers_shown_as_floats():
+    text = "| A |\n| --- |\n| 1.0 |\n| 2.5 |"
+    assert pp.fix_number_padding(text) == "| A |\n| --- |\n| 1 |\n| 2.5 |"
+
+
+def test_number_padding_leaves_unpadded_decimals_untouched():
+    text = "| A |\n| --- |\n| 0.65 |"
+    assert pp.fix_number_padding(text) == text
+
+
+def test_number_padding_leaves_plain_integers_untouched():
+    text = "| A |\n| --- |\n| 100 |"
+    assert pp.fix_number_padding(text) == text
+
+
 def test_text_containing_nan_outside_a_table_is_untouched():
     assert pp.clean_tables("値は NaN でした") == "値は NaN でした"
 

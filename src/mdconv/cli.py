@@ -85,6 +85,8 @@ def main(argv: list[str] | None = None) -> int:
         )
         return EXIT_USAGE
 
+    destinations = {} if to_stdout else _destinations(targets, args.output, len(targets) > 1)
+
     failures = 0
     for target in targets:
         try:
@@ -102,7 +104,7 @@ def main(argv: list[str] | None = None) -> int:
             sys.stdout.write(result.markdown)
             continue
 
-        destination = _destination(target, args.output, len(targets) > 1)
+        destination = destinations[target]
         if destination.exists() and not args.overwrite:
             print(
                 f"[スキップ] {destination} は既に存在します（--overwrite で上書き）",
@@ -158,6 +160,24 @@ def _destination(source: Path, output: Path, multiple: bool) -> Path:
     if multiple or output.is_dir() or output.suffix == "":
         return output / f"{source.stem}.md"
     return output
+
+
+def _destinations(targets: list[Path], output: Path, multiple: bool) -> dict[Path, Path]:
+    """全入力ぶんの出力先をまとめて決める。
+
+    `資料.docx` と `資料.xlsx` のように**拡張子違いで stem が同じ**ファイルは、
+    素直に `{stem}.md` にすると出力先が衝突し、片方が黙って消える（T-23）。
+    衝突する組だけ、元の拡張子を残した `{名前}.md`（例: `資料.docx.md`）にして避ける。
+    """
+    if not multiple and output.suffix != "" and not output.is_dir():
+        return {targets[0]: output}
+
+    stems = [_destination(t, output, True) for t in targets]
+    collisions = {d for d in stems if stems.count(d) > 1}
+    result: dict[Path, Path] = {}
+    for target, plain in zip(targets, stems, strict=True):
+        result[target] = output / f"{target.name}.md" if plain in collisions else plain
+    return result
 
 
 if __name__ == "__main__":  # pragma: no cover

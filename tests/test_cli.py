@@ -48,6 +48,20 @@ def test_directory_input_writes_one_file_per_document(tmp_path):
     assert sorted(p.name for p in out.glob("*.md")) == ["a.md", "b.md"]
 
 
+def test_same_stem_different_format_do_not_collide(tmp_path):
+    """`資料.docx` と `資料.xlsx` を一括変換しても、片方が上書きされないこと（T-23）。"""
+    src = tmp_path / "src"
+    src.mkdir()
+    fx.docx(src / "資料.docx", fx.para("Word の中身"))
+    fx.xlsx(src / "資料.xlsx", {"S": [["Excel の中身"]]})
+
+    out = tmp_path / "out"
+    assert main([str(src), "-o", str(out)]) == 0
+    assert sorted(p.name for p in out.glob("*.md")) == ["資料.docx.md", "資料.xlsx.md"]
+    assert "Word の中身" in (out / "資料.docx.md").read_text(encoding="utf-8")
+    assert "Excel の中身" in (out / "資料.xlsx.md").read_text(encoding="utf-8")
+
+
 def test_multiple_inputs_without_output_is_a_usage_error(tmp_path, capsys):
     a = fx.docx(tmp_path / "a.docx", fx.para("A"))
     b = fx.docx(tmp_path / "b.docx", fx.para("B"))

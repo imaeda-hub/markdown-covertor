@@ -24,6 +24,7 @@ _HEADING = re.compile(r"^(#{1,6})\s+(.*)$")
 _EMPTY_HEADER_ROW = re.compile(r"^\|(?:\s*\|)+\s*$")
 _SEPARATOR_ROW = re.compile(r"^\|(?:\s*:?-{2,}:?\s*\|)+\s*$")
 _NAN_CELL = re.compile(r"\|\s*NaN\s*\|")
+_PADDED_DECIMAL = re.compile(r"(?<=\|)([ \t]*)(-?\d+\.\d+)([ \t]*)(?=\|)")
 _LIST_ITEM = re.compile(r"^(?P<indent>[ ]*)(?P<marker>[*+-]|\d+\.)(?P<sep>[ ]+)(?P<text>.*)$")
 _BULLET_CYCLE = "*+-"  # mammoth 自身が入れ子で使う記号の順序に合わせる
 
@@ -144,6 +145,24 @@ def _is_degenerate_row(line: str) -> bool:
     """表として意味を成さない行（`|` だけ、セルが 1 つも無い）。"""
     stripped = line.strip()
     return stripped == "|" or stripped == "||"
+
+
+def fix_number_padding(markdown: str) -> str:
+    """表の数値セルから、同じ列で桁を揃えるために付いた余分な `0` を取り除く（T-28）。
+
+    markitdown は Excel の数値セルを pandas 経由で読むため、同じ列に
+    より精度の高い値（例: `0.65`）があると、精度の低い値（`0.6`）にも
+    `0` を付けて桁を揃えてしまう（`0.60` になる）。値そのものは変わって
+    いないので、末尾の `0`（と、余った `.`）を削るだけで元の値に戻る。
+    """
+
+    def strip(match: re.Match[str]) -> str:
+        lead, number, trail = match.groups()
+        if "." in number:
+            number = number.rstrip("0").rstrip(".")
+        return f"{lead}{number}{trail}"
+
+    return _PADDED_DECIMAL.sub(strip, markdown)
 
 
 def promote_empty_table_header(markdown: str) -> str:

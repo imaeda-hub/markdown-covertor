@@ -43,6 +43,7 @@
 | FR-215 | ➖ | Word の表題を文書のタイトルとして扱う | **対応しない**（Q-07 決定）。読めれば実害小さいと判断 |
 | FR-211 | 📋 | Word の脚注・コメントは本文末尾に集約して出力される | 未 |
 | FR-213 | 📋 | 表の結合セルは、値を複製せず結合の事実が分かる形で出力される | 未 |
+| FR-224 | ✅ | Excel の数値は、同じ列に精度の高い値があっても桁を揃えられない（元の値のまま出す） | `test_xlsx_number_padding_is_restored_to_the_original_value` |
 
 ## 3. 失われる情報の扱い（FR-3xx）
 
@@ -72,6 +73,7 @@
 | FR-405 | ✅ | 複数ファイルを標準出力に混ぜようとしたとき、使い方の誤りとして拒否する | `test_multiple_inputs_without_output_is_a_usage_error` |
 | FR-406 | ✅ | 一部のファイルが失敗しても、残りの変換は続行し、終了コードで失敗を伝える | `test_broken_file_returns_error_code` |
 | FR-408 | ✅ | 一括変換で、文書ごとに画像の置き場所を分ける | `test_images_of_different_documents_do_not_collide` |
+| FR-409 | ✅ | 同名で拡張子違いの資料を一括変換しても、出力ファイル名が衝突しない | `test_same_stem_different_format_do_not_collide` |
 | FR-407 | 📋 | 変換の進捗をファイル数つきで表示する（大量変換時） | 未 |
 
 **終了コード**: `0` 成功 ／ `1` 変換失敗あり ／ `2` 使い方の誤り

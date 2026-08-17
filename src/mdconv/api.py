@@ -108,6 +108,11 @@ def _apply(markdown, found, opts: ConvertOptions, source: Path):
 
     markdown = postprocess.clean_tables(markdown)
     markdown = postprocess.promote_empty_table_header(markdown)
+    if found.format == "xlsx":
+        # 桁揃えは pandas 経由で Excel を読むときだけ起きる現象。
+        # Word の表はセルの文字列をそのまま出すので、"100.00" のような
+        # 意図した表記まで壊してしまう（AI レビューで発見）
+        markdown = postprocess.fix_number_padding(markdown)
 
     if found.format == "docx":
         items = docx_list_levels(str(source))

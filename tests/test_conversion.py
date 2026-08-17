@@ -103,6 +103,14 @@ def test_xlsx_sheets_become_sections(tmp_path):
     assert "| 1月 | 100 |" in markdown
 
 
+def test_xlsx_number_padding_is_restored_to_the_original_value(tmp_path):
+    """FR-224: 同じ列に精度の高い値があっても、他の値に余分な 0 を付けない（T-28）。"""
+    path = fx.xlsx(tmp_path / "帳簿.xlsx", {"在庫": [["品番", "比率"], ["A", 0.6], ["B", 0.65]]})
+    markdown = convert_file(path).markdown
+    assert "| A | 0.6 |" in markdown
+    assert "| B | 0.65 |" in markdown
+
+
 def test_broken_file_raises_a_readable_error(tmp_path):
     """中身が壊れた資料を「平文として変換できた」ことにしない。"""
     path = tmp_path / "壊れた.docx"
