@@ -26,6 +26,7 @@ _SEPARATOR_ROW = re.compile(r"^\|(?:\s*:?-{2,}:?\s*\|)+\s*$")
 _NAN_CELL = re.compile(r"\|\s*NaN\s*\|")
 _PADDED_DECIMAL = re.compile(r"(?<=\|)([ \t]*)(-?\d+\.\d+)([ \t]*)(?=\|)")
 _LIST_ITEM = re.compile(r"^(?P<indent>[ ]*)(?P<marker>[*+-]|\d+\.)(?P<sep>[ ]+)(?P<text>.*)$")
+_MERGED_TABLE_ROWS = re.compile(r" \|\| ")
 _BULLET_CYCLE = "*+-"  # mammoth 自身が入れ子で使う記号の順序に合わせる
 
 
@@ -145,6 +146,29 @@ def _is_degenerate_row(line: str) -> bool:
     """表として意味を成さない行（`|` だけ、セルが 1 つも無い）。"""
     stripped = line.strip()
     return stripped == "|" or stripped == "||"
+
+
+def split_merged_table_rows(markdown: str) -> str:
+    """グラフの表と直後の図形の表が改行なしで連結された行を分割する（T-37）。
+
+    markitdown の `_convert_chart_to_markdown` はグラフの表の最終行に改行を
+    付けずに返す。直後に別の図形の表が続くスライドでは、その表の Markdown が
+    同じ行にそのまま連結され、両方の表が壊れる。連結点は必ず
+    「1 つ目の行の末尾 `... |`」+「2 つ目の行の先頭 `| ...`」という形になり、
+    `" || "`（前後に空白を伴う連続する 2 つの `|`）という、正しい表の行には
+    現れない並びになる。これを目印に行を分割する。
+
+    分割は**空行を挟んで**行う。ただの改行だけでは GFM の表は区切られず
+    （区切り行を挟まない `|` 始まりの行は前の表の続きとして読まれる）、
+    列数がたまたま同じ場合に 2 つの表が 1 つに融合したままになる。
+    """
+    out: list[str] = []
+    for line in markdown.splitlines():
+        if line.startswith("|") and _MERGED_TABLE_ROWS.search(line):
+            out.extend(_MERGED_TABLE_ROWS.sub(" |\n\n| ", line).splitlines())
+        else:
+            out.append(line)
+    return "\n".join(out)
 
 
 def fix_number_padding(markdown: str) -> str:

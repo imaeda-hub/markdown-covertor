@@ -41,6 +41,34 @@ def test_url_image_reference_is_left_alone():
     assert assets == [] and unmatched == 0
 
 
+# -- グラフの表と次の図形の表の連結（T-37） --------------------------------
+
+
+def test_split_merged_table_rows_separates_chart_and_next_table():
+    """markitdown は PowerPoint のグラフの表の最終行に改行を付けずに返す。
+
+    直後に別の表（図形）が続くと同じ行に連結され、両方の表が壊れる
+    （実際の検体で再現した文字列そのもの、2026-08-17 の journal 参照）。
+    分割は空行を挟む。ただの改行だけでは列数が同じ場合に GFM の表として
+    1 つに融合したままになる（区切り行を挟まない `|` 行は前の表の続きと
+    読まれるため）。
+    """
+    merged = "| C | 1500.0 || 項目 | 値 |\n| --- | --- |\n| 手入力 | 100.00 |"
+    fixed = pp.split_merged_table_rows(merged)
+    assert fixed == "| C | 1500.0 |\n\n| 項目 | 値 |\n| --- | --- |\n| 手入力 | 100.00 |"
+
+
+def test_split_merged_table_rows_handles_multiple_merges_on_one_line():
+    merged = "| A | 1 || B | 2 || C | 3 |"
+    fixed = pp.split_merged_table_rows(merged)
+    assert fixed == "| A | 1 |\n\n| B | 2 |\n\n| C | 3 |"
+
+
+def test_split_merged_table_rows_leaves_normal_tables_alone():
+    text = "| 項目 | 値 |\n| --- | --- |\n| A | 1 |\n\n本文の段落。"
+    assert pp.split_merged_table_rows(text) == text
+
+
 def test_bare_name_reference_is_treated_as_a_placeholder():
     """PowerPoint の `Picture4.jpg` のような参照は、指す先が存在しない。"""
     md, assets, _ = pp.place_images("![図](Picture4.jpg)", [("x.png", b"X")], "assets/x")

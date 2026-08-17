@@ -44,6 +44,7 @@
 | FR-211 | 📋 | Word の脚注・コメントは本文末尾に集約して出力される | 未 |
 | FR-213 | 📋 | 表の結合セルは、値を複製せず結合の事実が分かる形で出力される | 未 |
 | FR-224 | ✅ | Excel の数値は、同じ列に精度の高い値があっても桁を揃えられない（元の値のまま出す） | `test_xlsx_number_padding_is_restored_to_the_original_value` |
+| FR-225 | ✅ | PowerPoint のグラフの表の直後に別の図形の表が続いても、両方とも壊れず GFM の表になる | `test_split_merged_table_rows_separates_chart_and_next_table` |
 
 ## 3. 失われる情報の扱い（FR-3xx）
 

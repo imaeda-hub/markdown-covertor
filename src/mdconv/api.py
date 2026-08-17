@@ -106,6 +106,11 @@ def _apply(markdown, found, opts: ConvertOptions, source: Path):
         names = "、".join(found.hidden_sheets)
         found.warn(f"非表示シート「{names}」を除外しました（--include-hidden で出力）")
 
+    if found.format == "pptx":
+        # グラフの表と直後の図形の表が改行なしで連結されることがある（T-37）。
+        # 後続の表の補正が正しい行境界を見られるよう、他の表補正より先に直す
+        markdown = postprocess.split_merged_table_rows(markdown)
+
     markdown = postprocess.clean_tables(markdown)
     markdown = postprocess.promote_empty_table_header(markdown)
     if found.format == "xlsx":
